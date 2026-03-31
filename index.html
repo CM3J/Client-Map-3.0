@@ -4,18 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Employee Points Dashboard</title>
-    <!-- Tailwind CSS for Styling -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel Standalone for JSX -->
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Chart.js for Visualizations -->
+    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Firebase Compat SDKs -->
+    <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore-compat.js"></script>
@@ -36,46 +36,28 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
-        // --- FIREBASE CONFIGURATION ---
-        const firebaseConfig = typeof __firebase_config !== 'undefined' 
-            ? JSON.parse(__firebase_config) 
-            : {
-                apiKey: "AIzaSyDVxpbThTvMCZR8tkbqVvUbhAKGTmSkl_g",
-                authDomain: "employee-dashboard-2.firebaseapp.com",
-                projectId: "employee-dashboard-2",
-                storageBucket: "employee-dashboard-2.firebasestorage.app",
-                messagingSenderId: "986398601231",
-                appId: "1:986398601231:web:1a6d9c9b171ea8236337a"
+        // --- FIREBASE INITIALIZATION HELPER ---
+        const initFirebase = (config) => {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(config);
+            }
+            return {
+                auth: firebase.auth(),
+                db: firebase.firestore()
             };
-
-        // Initialize Firebase
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'employee-dash-production';
+        };
 
         const Icon = ({ name, size = 20, className = "" }) => {
             const iconRef = useRef(null);
             useEffect(() => {
                 if (iconRef.current && window.lucide) {
-                    window.lucide.createIcons({
-                        attrs: { size, class: className },
-                        nameAttr: 'data-lucide'
-                    });
+                    window.lucide.createIcons({ attrs: { size, class: className }, nameAttr: 'data-lucide' });
                 }
             }, [name, size, className]);
             return <i data-lucide={name} ref={iconRef}></i>;
         };
 
-        const formatMonthKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        const getMonthDisplay = (key) => {
-            if (!key) return '';
-            const [year, month] = key.split('-');
-            return new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
-        };
-
+        // --- CHART COMPONENTS ---
         const TrendChart = ({ data }) => {
             const canvasRef = useRef(null);
             const chartInstance = useRef(null);
@@ -87,9 +69,20 @@
                     type: 'line',
                     data: {
                         labels: data.map(d => d.date),
-                        datasets: [{ label: 'Net Points', data: data.map(d => d.total), borderColor: '#4f46e5', backgroundColor: 'rgba(79, 70, 229, 0.05)', fill: true, tension: 0.3, borderWidth: 3 }]
+                        datasets: [{ 
+                            label: 'Points', 
+                            data: data.map(d => d.total), 
+                            borderColor: '#4f46e5', 
+                            tension: 0.3, 
+                            fill: true, 
+                            backgroundColor: 'rgba(79, 70, 229, 0.05)' 
+                        }]
                     },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true }, x: { grid: { display: false } } } }
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false,
+                        scales: { y: { beginAtZero: true } }
+                    }
                 });
                 return () => chartInstance.current?.destroy();
             }, [data]);
@@ -107,9 +100,19 @@
                     type: 'bar',
                     data: {
                         labels: data.map(d => d.name),
-                        datasets: [{ label: 'Score', data: data.map(d => d.score), backgroundColor: data.map(d => d.score >= 0 ? '#4f46e5' : '#ef4444'), borderRadius: 6 }]
+                        datasets: [{ 
+                            label: 'Score', 
+                            data: data.map(d => d.score), 
+                            backgroundColor: data.map(d => d.score >= 0 ? '#4f46e5' : '#ef4444'), 
+                            borderRadius: 6 
+                        }]
                     },
-                    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } } } }
+                    options: { 
+                        indexAxis: 'y', 
+                        responsive: true, 
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } }
+                    }
                 });
                 return () => chartInstance.current?.destroy();
             }, [data]);
@@ -118,65 +121,109 @@
 
         const App = () => {
             const [user, setUser] = useState(null);
-            const [authError, setAuthError] = useState(null);
-            const [showTroubleshoot, setShowTroubleshoot] = useState(false);
+            const [status, setStatus] = useState('initializing'); // initializing, error, ready
+            const [errorMsg, setErrorMsg] = useState(null);
+            
+            // Manual Config state for emergency fallback
+            const [manualConfig, setManualConfig] = useState({ apiKey: '', appId: '' });
+            const [showManualInput, setShowManualInput] = useState(false);
+
             const [activeTab, setActiveTab] = useState('dashboard');
             const [employees, setEmployees] = useState([]);
             const [reasons, setReasons] = useState([]);
             const [points, setPoints] = useState([]);
             const [logs, setLogs] = useState([]);
-            const [selectedMonth, setSelectedMonth] = useState(formatMonthKey());
+            const [selectedMonth, setSelectedMonth] = useState(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
             const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
 
             const [empForm, setEmpForm] = useState("");
             const [reasonForm, setReasonForm] = useState({ text: "", value: 0 });
             const [pointForm, setPointForm] = useState({ empId: "", reasonId: "", admin: "", notes: "" });
 
-            useEffect(() => {
-                const timeout = setTimeout(() => { if (!user) setShowTroubleshoot(true); }, 5000);
-                const initAuth = async () => {
-                    try {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await auth.signInWithCustomToken(__initial_auth_token);
-                        } else {
-                            await auth.signInAnonymously();
-                        }
-                    } catch (err) { 
-                        console.error("Firebase Auth Error:", err);
-                        setAuthError(err.message);
-                    }
-                };
-                initAuth();
-                const unsubscribe = auth.onAuthStateChanged((u) => {
-                  if (u) {
-                    setUser(u);
-                    setShowTroubleshoot(false);
-                  }
-                });
-                return () => { unsubscribe(); clearTimeout(timeout); };
-            }, []);
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'employee-dash-production';
 
+            // 1. Connection Logic
+            useEffect(() => {
+                const config = typeof __firebase_config !== 'undefined' 
+                    ? JSON.parse(__firebase_config) 
+                    : {
+                        apiKey: manualConfig.apiKey || "AIzaSyDVxpbTHTvMCZR8tkbqVvUbhAKGTmSkL_g",
+                        authDomain: "employee-dashboard-2.firebaseapp.com",
+                        projectId: "employee-dashboard-2",
+                        storageBucket: "employee-dashboard-2.firebasestorage.app",
+                        messagingSenderId: "986398601231",
+                        appId: manualConfig.appId || "1:986398601231:web:1a6d9c9b171ea8236337a"
+                    };
+
+                try {
+                    const { auth: fbAuth } = initFirebase(config);
+                    
+                    const unsubscribe = fbAuth.onAuthStateChanged(u => {
+                        if (u) {
+                            setUser(u);
+                            setStatus('ready');
+                        } else {
+                            // Rule 3: Auth first, ensure signIn is called and then status updated
+                            const initAuth = async () => {
+                                try {
+                                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                                        await fbAuth.signInWithCustomToken(__initial_auth_token);
+                                    } else {
+                                        await fbAuth.signInAnonymously();
+                                    }
+                                } catch (err) {
+                                    console.error("Auth initialization failed:", err);
+                                    setErrorMsg(err.message);
+                                    setStatus('error');
+                                }
+                            };
+                            initAuth();
+                        }
+                    });
+                    return () => unsubscribe();
+                } catch (e) {
+                    setErrorMsg("Invalid Firebase Configuration");
+                    setStatus('error');
+                }
+            }, [manualConfig]);
+
+            // 2. Data Logic (Ensuring user is present before listening)
             useEffect(() => {
                 if (!user) return;
-                const getColl = (name) => db.collection('artifacts').doc(appId).collection('public').doc('data').collection(name);
-                const unsubEmp = getColl('employees').onSnapshot(snap => setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-                const unsubReason = getColl('reasons').onSnapshot(snap => setReasons(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-                const unsubPoints = getColl('points').onSnapshot(snap => {
-                    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    data.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
-                    setPoints(data);
-                });
-                const unsubLogs = getColl('change_logs').onSnapshot(snap => {
-                    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    data.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
-                    setLogs(data);
-                });
-                return () => { unsubEmp(); unsubReason(); unsubPoints(); unsubLogs(); };
+                const fbDb = firebase.firestore();
+                // Rule 1: Mandatory Path /artifacts/{appId}/public/data/{collectionName}
+                const getColl = (name) => fbDb.collection('artifacts').doc(appId).collection('public').doc('data').collection(name);
+                
+                const unsub1 = getColl('employees').onSnapshot(
+                    s => setEmployees(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+                    err => console.error("Employees sync error:", err)
+                );
+                const unsub2 = getColl('reasons').onSnapshot(
+                    s => setReasons(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+                    err => console.error("Reasons sync error:", err)
+                );
+                const unsub3 = getColl('points').onSnapshot(
+                    s => {
+                        const d = s.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        // Rule 2: Sorting in memory
+                        setPoints(d.sort((a,b) => (b.timestamp?.seconds||0)-(a.timestamp?.seconds||0)));
+                    },
+                    err => console.error("Points sync error:", err)
+                );
+                const unsub4 = getColl('change_logs').onSnapshot(
+                    s => {
+                        const d = s.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        setLogs(d.sort((a,b) => (b.timestamp?.seconds||0)-(a.timestamp?.seconds||0)));
+                    },
+                    err => console.error("Logs sync error:", err)
+                );
+
+                return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
             }, [user]);
 
             const logAction = async (action, details, admin) => {
                 if (!user) return;
-                await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('change_logs').add({
+                await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('change_logs').add({
                     action, details, admin: admin || "Admin", timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
             };
@@ -184,170 +231,218 @@
             const addEmployee = async (e) => {
                 e.preventDefault();
                 if (!user || !empForm.trim()) return;
-                await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees').add({
-                    name: empForm.trim(), createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('employees').add({
+                    name: empForm.trim(), timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
-                await logAction("Employee Added", `Added new employee: ${empForm}`, "System");
+                await logAction("Employee Added", `Added ${empForm}`, "Admin");
                 setEmpForm("");
             };
 
-            const handleAssign = async (e) => {
+            const assignPoint = async (e) => {
                 e.preventDefault();
                 if (!user) return;
                 const emp = employees.find(e => e.id === pointForm.empId);
                 const reas = reasons.find(r => r.id === pointForm.reasonId);
                 if (!emp || !reas) return;
-                await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('points').add({
+                await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('points').add({
                     employeeId: emp.id, employeeName: emp.name, reasonText: reas.text,
                     value: Number(reas.value), admin: pointForm.admin, notes: pointForm.notes,
-                    monthKey: formatMonthKey(), timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    monthKey: selectedMonth, timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
-                await logAction("Points Assigned", `${reas.value > 0 ? '+' : ''}${reas.value} to ${emp.name}`, pointForm.admin);
+                await logAction("Points Assigned", `${reas.value >= 0 ? '+' : ''}${reas.value} to ${emp.name}`, pointForm.admin);
                 setPointForm({ empId: "", reasonId: "", admin: pointForm.admin, notes: "" });
             };
 
             const stats = useMemo(() => {
-                const filtered = points.filter(p => p.monthKey === selectedMonth);
+                const f = points.filter(p => p.monthKey === selectedMonth);
                 return { 
-                    pos: filtered.filter(p => p.value > 0).reduce((a, b) => a + b.value, 0),
-                    neg: filtered.filter(p => p.value < 0).reduce((a, b) => a + b.value, 0),
-                    total: filtered.length 
+                    pos: f.filter(p => p.value > 0).reduce((a,b)=>a+b.value,0), 
+                    neg: f.filter(p => p.value < 0).reduce((a,b)=>a+b.value,0), 
+                    total: f.length 
                 };
             }, [points, selectedMonth]);
 
             const leaderboardData = useMemo(() => {
-                const map = {};
-                employees.forEach(e => map[e.id] = { name: e.name, score: 0 });
-                points.filter(p => p.monthKey === selectedMonth).forEach(p => { if (map[p.employeeId]) map[p.employeeId].score += p.value; });
-                return Object.values(map).sort((a, b) => b.score - a.score);
+                const m = {};
+                employees.forEach(e => m[e.id] = { name: e.name, score: 0 });
+                points.filter(p => p.monthKey === selectedMonth).forEach(p => { if (m[p.employeeId]) m[p.employeeId].score += p.value; });
+                return Object.values(m).sort((a,b) => b.score - a.score);
             }, [employees, points, selectedMonth]);
 
             const trends = useMemo(() => {
                 if (!selectedEmployeeId) return [];
-                const daily = {};
+                const d = {};
                 points.filter(p => p.employeeId === selectedEmployeeId).forEach(p => {
                     if (!p.timestamp) return;
                     const date = p.timestamp.toDate().toLocaleDateString();
-                    if (!daily[date]) daily[date] = { date, pos: 0, neg: 0, total: 0 };
-                    if (p.value > 0) daily[date].pos += p.value;
-                    else daily[date].neg += Math.abs(p.value);
-                    daily[date].total += p.value;
+                    if (!d[date]) d[date] = { date, total: 0 };
+                    d[date].total += p.value;
                 });
-                return Object.values(daily).reverse();
+                return Object.values(d).reverse();
             }, [points, selectedEmployeeId]);
 
-            return (
-                <div className="flex h-screen bg-gray-50 overflow-hidden">
-                    <aside className="w-64 bg-white border-r flex flex-col p-6 shrink-0 shadow-sm">
-                        <div className="flex items-center gap-3 mb-10 px-2">
-                            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-100">
-                                <Icon name="award" size={24} />
+            if (status !== 'ready') {
+                return (
+                    <div className="h-screen flex flex-col items-center justify-center p-6 bg-indigo-50 text-center">
+                        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <h2 className="text-xl font-bold text-indigo-900">Synchronizing Dashboard...</h2>
+                        
+                        {status === 'error' && (
+                            <div className="mt-8 p-6 bg-white rounded-2xl shadow-xl border border-red-100 max-w-md w-full animate-fade-in text-center">
+                                <h3 className="text-red-600 font-bold flex items-center gap-2 mb-2 justify-center"><Icon name="alert-circle"/> Connection Blocked</h3>
+                                <p className="text-sm text-gray-600 mb-4">{errorMsg || "API Key or configuration is invalid."}</p>
+                                <p className="text-xs text-gray-400 mb-4 font-medium uppercase">Required Firebase Setup:</p>
+                                <ul className="text-left text-xs text-gray-500 mb-4 space-y-1 list-disc pl-4">
+                                    <li>Enable <b>Anonymous</b> in Authentication settings</li>
+                                    <li>Add <b>cm3j.github.io</b> to Authorized Domains</li>
+                                    <li>Set Firestore rules to <b>Test Mode</b> (allow read, write)</li>
+                                </ul>
+                                
+                                {!showManualInput ? (
+                                    <button onClick={() => setShowManualInput(true)} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-bold">Override Keys Manually</button>
+                                ) : (
+                                    <div className="space-y-3">
+                                        <input type="text" placeholder="API Key" className="w-full border p-2 rounded text-sm" value={manualConfig.apiKey} onChange={e => setManualConfig({...manualConfig, apiKey: e.target.value.trim()})} />
+                                        <input type="text" placeholder="App ID" className="w-full border p-2 rounded text-sm" value={manualConfig.appId} onChange={e => setManualConfig({...manualConfig, appId: e.target.value.trim()})} />
+                                        <button onClick={() => setStatus('initializing')} className="w-full bg-green-600 text-white py-2 rounded-lg font-bold">Retry Connection</button>
+                                    </div>
+                                )}
                             </div>
-                            <span className="text-xl font-bold text-gray-800 tracking-tight">TeamPulse</span>
+                        )}
+                    </div>
+                );
+            }
+
+            return (
+                <div className="flex h-screen overflow-hidden">
+                    <aside className="w-64 bg-white border-r flex flex-col p-6 shadow-sm">
+                        <div className="flex items-center gap-3 mb-10">
+                            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg"><Icon name="award" size={24} /></div>
+                            <span className="text-xl font-bold tracking-tight">TeamPulse</span>
                         </div>
-                        <nav className="flex-1 space-y-2">
+                        <nav className="flex-1 space-y-1">
                             {[
-                                {id: 'dashboard', icon: 'layout-dashboard', label: 'Dashboard'},
-                                {id: 'assign', icon: 'plus-circle', label: 'Assign Points'},
-                                {id: 'team', icon: 'users', label: 'Team Management'},
-                                {id: 'settings', icon: 'settings', label: 'Reason Library'},
-                                {id: 'changelog', icon: 'history', label: 'Change Log'}
+                                {id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard'},
+                                {id: 'assign', label: 'Assign Points', icon: 'plus-circle'},
+                                {id: 'team', label: 'Employees', icon: 'users'},
+                                {id: 'settings', label: 'Library', icon: 'settings'},
+                                {id: 'changelog', label: 'Activity Log', icon: 'history'}
                             ].map(item => (
                                 <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-3 p-3 px-4 rounded-xl transition-all ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'text-gray-500 hover:bg-gray-100'}`}>
-                                    <Icon name={item.icon} size={20} />
-                                    <span className="font-semibold">{item.label}</span>
+                                    <Icon name={item.icon} size={18} />
+                                    <span className="font-semibold text-sm">{item.label}</span>
                                 </button>
                             ))}
                         </nav>
                     </aside>
 
-                    <main className="flex-1 overflow-y-auto p-8 pt-6">
+                    <main className="flex-1 overflow-y-auto p-8 bg-gray-50">
                         <header className="flex justify-between items-center mb-8">
-                            <div>
-                                <h1 className="text-2xl font-extrabold text-gray-900 capitalize">{activeTab.replace('changelog', 'Change Log')}</h1>
-                                <p className="text-gray-500 text-sm">Engagement and performance tracking</p>
-                            </div>
-                            <div className="flex items-center gap-4 bg-white p-2 px-4 rounded-xl border shadow-sm">
-                                <Icon name="calendar" size={18} className="text-indigo-500" />
-                                <select className="bg-transparent border-none text-sm font-bold text-gray-700 outline-none cursor-pointer" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
-                                    {[0, 1, 2, 3, 4, 5].map(i => {
-                                        const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-                                        const key = formatMonthKey(d);
-                                        return <option key={key} value={key}>{getMonthDisplay(key)}</option>;
+                            <h1 className="text-2xl font-black text-gray-900 capitalize">{activeTab.replace('changelog', 'Activity Log')}</h1>
+                            <div className="bg-white p-2 px-4 rounded-xl border flex items-center gap-2">
+                                <Icon name="calendar" size={16} className="text-indigo-500"/>
+                                <select className="bg-transparent text-sm font-bold outline-none cursor-pointer" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+                                    {[0,1,2,3,4,5].map(i => {
+                                        const d = new Date(); d.setMonth(d.getMonth()-i);
+                                        const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+                                        return <option key={k} value={k}>{d.toLocaleString('default',{month:'long',year:'numeric'})}</option>
                                     })}
                                 </select>
                             </div>
                         </header>
 
-                        {!user ? (
-                            <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
-                                <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                                <p className="text-gray-500 font-medium">Connecting to Database...</p>
-                                {showTroubleshoot && (
-                                    <div className="mt-8 p-6 bg-white border rounded-2xl shadow-xl max-w-md animate-fade-in text-center">
-                                        <h3 className="font-bold text-red-600 mb-2 flex items-center justify-center gap-2">
-                                            <Icon name="alert-circle" /> Troubleshooting Connection
-                                        </h3>
-                                        <p className="text-sm text-gray-600 mb-4">It's taking longer than expected. Please check:</p>
-                                        <ul className="text-sm text-left space-y-2 list-disc pl-5 text-gray-700">
-                                            <li>Enable <strong>Anonymous Authentication</strong> in Firebase Console.</li>
-                                            <li>Add <strong>cm3j.github.io</strong> to Authorized Domains.</li>
-                                            <li>Ensure Firestore rules are in <strong>Test Mode</strong>.</li>
-                                        </ul>
-                                        {authError && <div className="mt-4 p-2 bg-red-50 text-red-800 text-xs rounded border border-red-200 uppercase">{authError}</div>}
+                        <div className="animate-fade-in max-w-6xl mx-auto">
+                            {activeTab === 'dashboard' && (
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-3 gap-6">
+                                        <div className="bg-white p-6 rounded-2xl border shadow-sm"><p className="text-xs font-bold text-gray-400 uppercase mb-1">Positive</p><h3 className="text-3xl font-black text-green-600">+{stats.pos}</h3></div>
+                                        <div className="bg-white p-6 rounded-2xl border shadow-sm"><p className="text-xs font-bold text-gray-400 uppercase mb-1">Negative</p><h3 className="text-3xl font-black text-red-600">{stats.neg}</h3></div>
+                                        <div className="bg-white p-6 rounded-2xl border shadow-sm"><p className="text-xs font-bold text-gray-400 uppercase mb-1">Actions</p><h3 className="text-3xl font-black text-indigo-600">{stats.total}</h3></div>
                                     </div>
-                                )}
-                            </div>
-                        ) : (
-                            <div className="animate-fade-in max-w-6xl mx-auto">
-                                {activeTab === 'dashboard' && (
-                                    <div className="space-y-8">
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                            <div className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col"><span className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Monthly Positive</span><h3 className="text-3xl font-black text-green-600">+{stats.pos}</h3></div>
-                                            <div className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col"><span className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Monthly Negative</span><h3 className="text-3xl font-black text-red-600">{stats.neg}</h3></div>
-                                            <div className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col"><span className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Total Interactions</span><h3 className="text-3xl font-black text-indigo-600">{stats.total}</h3></div>
-                                        </div>
-                                        <div className="bg-white p-8 rounded-2xl border shadow-sm">
-                                            <h2 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2"><Icon name="trending-up" className="text-indigo-500" /> Leaderboard Rankings</h2>
-                                            <LeaderboardChart data={leaderboardData} />
+                                    <div className="bg-white p-8 rounded-2xl border shadow-sm">
+                                        <h2 className="font-bold mb-6 text-lg flex items-center gap-2"><Icon name="bar-chart" className="text-indigo-500"/> Monthly Leaderboard</h2>
+                                        <LeaderboardChart data={leaderboardData} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'assign' && (
+                                <div className="max-w-xl mx-auto bg-white p-10 rounded-3xl border shadow-sm">
+                                    <h2 className="text-xl font-bold mb-6">Assign Interaction</h2>
+                                    <form onSubmit={assignPoint} className="space-y-4">
+                                        <select className="w-full p-3 bg-gray-50 border rounded-xl" value={pointForm.empId} onChange={e => setPointForm({...pointForm, empId: e.target.value})} required>
+                                            <option value="">Target Employee...</option>
+                                            {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                                        </select>
+                                        <select className="w-full p-3 bg-gray-50 border rounded-xl" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})} required>
+                                            <option value="">Interaction Reason...</option>
+                                            {reasons.map(r => <option key={r.id} value={r.id}>{r.text} ({r.value})</option>)}
+                                        </select>
+                                        <input className="w-full p-3 bg-gray-50 border rounded-xl" placeholder="Your Name (Admin)" value={pointForm.admin} onChange={e => setPointForm({...pointForm, admin: e.target.value})} required />
+                                        <textarea className="w-full p-3 bg-gray-50 border rounded-xl" placeholder="Notes..." rows="3" value={pointForm.notes} onChange={e => setPointForm({...pointForm, notes: e.target.value})} />
+                                        <button className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-100 transition-all hover:bg-indigo-700">Assign Interaction</button>
+                                    </form>
+                                </div>
+                            )}
+
+                            {activeTab === 'team' && (
+                                <div className="grid grid-cols-3 gap-6">
+                                    <div className="col-span-1 space-y-4">
+                                        <form onSubmit={addEmployee} className="flex gap-2"><input className="flex-1 border p-3 rounded-xl" placeholder="Add Name..." value={empForm} onChange={e => setEmpForm(e.target.value)} required/><button className="bg-indigo-600 text-white px-4 rounded-xl"><Icon name="plus" size={18}/></button></form>
+                                        <div className="bg-white rounded-xl border overflow-hidden divide-y max-h-[500px] overflow-y-auto custom-scrollbar">
+                                            {employees.length === 0 ? <div className="p-4 text-center text-gray-400 text-sm italic">No employees yet</div> :
+                                            employees.map(e => <button key={e.id} onClick={() => setSelectedEmployeeId(e.id)} className={`w-full text-left p-4 transition-all hover:bg-gray-50 ${selectedEmployeeId === e.id ? 'bg-indigo-50 border-r-4 border-indigo-600 font-bold text-indigo-700' : ''}`}>{e.name}</button>)}
                                         </div>
                                     </div>
-                                )}
-                                {activeTab === 'assign' && (
-                                    <div className="max-w-xl mx-auto bg-white p-8 rounded-2xl border shadow-sm">
-                                        <form onSubmit={handleAssign} className="space-y-6">
-                                            <div className="space-y-4">
-                                                <div><label className="text-xs font-bold uppercase text-gray-400 mb-2 block">Employee</label><select className="w-full bg-gray-50 border p-3 rounded-xl" value={pointForm.empId} onChange={e => setPointForm({...pointForm, empId: e.target.value})} required><option value="">Select...</option>{employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
-                                                <div><label className="text-xs font-bold uppercase text-gray-400 mb-2 block">Reason</label><select className="w-full bg-gray-50 border p-3 rounded-xl" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})} required><option value="">Select...</option>{reasons.map(r => <option key={r.id} value={r.id}>{r.text} ({r.value > 0 ? '+' : ''}{r.value})</option>)}</select></div>
+                                    <div className="col-span-2 bg-white p-8 rounded-2xl border shadow-sm min-h-[400px]">
+                                        {selectedEmployeeId ? (
+                                            <div>
+                                                <div className="flex justify-between mb-8 items-center border-b pb-4">
+                                                    <h2 className="text-2xl font-black">{employees.find(e => e.id === selectedEmployeeId)?.name}</h2>
+                                                    <button onClick={async () => { if(confirm("Delete employee?")){ await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('employees').doc(selectedEmployeeId).delete(); setSelectedEmployeeId(null); } }} className="text-gray-300 hover:text-red-500"><Icon name="trash-2" size={20}/></button>
+                                                </div>
+                                                <TrendChart data={trends} />
                                             </div>
-                                            <input type="text" placeholder="Your Name (Admin)" className="w-full bg-gray-50 border p-3 rounded-xl" value={pointForm.admin} onChange={e => setPointForm({...pointForm, admin: e.target.value})} required />
-                                            <textarea placeholder="Notes..." rows="3" className="w-full bg-gray-50 border p-3 rounded-xl" value={pointForm.notes} onChange={e => setPointForm({...pointForm, notes: e.target.value})} />
-                                            <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-indigo-200 transition-all flex items-center justify-center gap-2"><Icon name="check" size={20} /> Finalize Points</button>
-                                        </form>
+                                        ) : <div className="h-full flex flex-col items-center justify-center text-gray-400 italic"><Icon name="user" size={48} className="mb-2 opacity-20"/>Select an employee profile</div>}
                                     </div>
-                                )}
-                                {activeTab === 'team' && (
-                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                        <div className="lg:col-span-1 space-y-4">
-                                            <form onSubmit={addEmployee} className="flex gap-2"><input type="text" placeholder="Name" className="flex-1 border p-3 rounded-xl" value={empForm} onChange={e => setEmpForm(e.target.value)} required /><button type="submit" className="bg-indigo-600 text-white p-3 px-5 rounded-xl hover:bg-indigo-700 transition-colors"><Icon name="plus" size={18} /></button></form>
-                                            <div className="bg-white rounded-2xl border shadow-sm divide-y overflow-hidden max-h-[500px] overflow-y-auto custom-scrollbar">
-                                                {employees.length === 0 ? <div className="p-8 text-center text-gray-400 text-sm">No employees found</div> : employees.map(e => (<button key={e.id} onClick={() => setSelectedEmployeeId(e.id)} className={`w-full text-left p-4 hover:bg-gray-50 flex justify-between items-center transition-all ${selectedEmployeeId === e.id ? 'bg-indigo-50 border-r-4 border-indigo-600 font-bold' : ''}`}><span>{e.name}</span><Icon name="chevron-right" size={16} className="text-gray-300" /></button>))}
-                                            </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'settings' && (
+                                <div className="max-w-2xl mx-auto space-y-6">
+                                    <div className="bg-white p-8 rounded-2xl border shadow-sm">
+                                        <h3 className="font-bold mb-4 flex items-center gap-2"><Icon name="list" className="text-indigo-500"/> Reason Library</h3>
+                                        <div className="flex gap-2">
+                                            <input className="flex-[3] border p-3 rounded-xl bg-gray-50" placeholder="Reason Title" value={reasonForm.text} onChange={e => setReasonForm({...reasonForm, text: e.target.value})}/>
+                                            <input className="flex-1 border p-3 rounded-xl bg-gray-50" type="number" placeholder="Pts" value={reasonForm.value} onChange={e => setReasonForm({...reasonForm, value: e.target.value})}/>
+                                            <button onClick={async () => { if(!reasonForm.text) return; await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('reasons').add({...reasonForm, value: Number(reasonForm.value)}); setReasonForm({text:"", value:0}); }} className="bg-indigo-600 text-white px-6 rounded-xl font-bold">Add</button>
                                         </div>
-                                        <div className="lg:col-span-2">{selectedEmployeeId ? (<div className="bg-white p-8 rounded-2xl border shadow-sm"><h2 className="text-2xl font-black text-gray-800 mb-6 flex justify-between items-center">{employees.find(e => e.id === selectedEmployeeId)?.name}<button onClick={async () => { if(confirm("Delete profile?")) { await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees').doc(selectedEmployeeId).delete(); setSelectedEmployeeId(null); } }} className="text-gray-300 hover:text-red-500 transition-colors"><Icon name="trash-2" size={18} /></button></h2><div className="mb-6"><TrendChart data={trends} /></div></div>) : (<div className="h-full min-h-[300px] border-2 border-dashed rounded-2xl flex flex-col items-center justify-center text-gray-400"><Icon name="user" size={40} className="mb-2 opacity-20" /><p className="font-medium">Select an employee profile</p></div>)}</div>
                                     </div>
-                                )}
-                                {activeTab === 'settings' && (
-                                    <div className="max-w-2xl mx-auto space-y-6">
-                                        <div className="bg-white p-8 rounded-2xl border shadow-sm"><h2 className="text-lg font-bold mb-6">Manage Library Reasons</h2><div className="space-y-4"><input type="text" placeholder="Title" className="w-full border p-3 rounded-xl" value={reasonForm.text} onChange={e => setReasonForm({...reasonForm, text: e.target.value})} /><div className="flex gap-4"><input type="number" placeholder="Points" className="flex-1 border p-3 rounded-xl" value={reasonForm.value} onChange={e => setReasonForm({...reasonForm, value: e.target.value})} /><button onClick={async () => { if (!reasonForm.text.trim()) return; await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('reasons').add({...reasonForm, value: Number(reasonForm.value)}); await logAction("Reason Added", reasonForm.text); setReasonForm({text: "", value: 0}); }} className="bg-green-600 text-white font-bold px-8 rounded-xl">Add</button></div></div></div>
-                                        <div className="bg-white rounded-2xl border shadow-sm overflow-hidden divide-y">{reasons.map(r => (<div key={r.id} className="p-4 px-6 flex justify-between items-center hover:bg-gray-50 transition-colors"><div><p className="font-bold text-gray-800">{r.text}</p><span className={`text-xs font-bold ${r.value >= 0 ? 'text-green-500' : 'text-red-500'}`}>{r.value > 0 ? '+' : ''}{r.value} Points</span></div><button onClick={() => db.collection('artifacts').doc(appId).collection('public').doc('data').collection('reasons').doc(r.id).delete()} className="text-gray-300 hover:text-red-500"><Icon name="trash" size={16} /></button></div>))}</div>
+                                    <div className="bg-white rounded-xl border divide-y overflow-hidden shadow-sm max-h-[400px] overflow-y-auto custom-scrollbar">
+                                        {reasons.length === 0 ? <div className="p-4 text-center text-gray-400 italic">No reasons configured</div> :
+                                        reasons.map(r => <div key={r.id} className="p-4 flex justify-between items-center hover:bg-gray-50"><span>{r.text} <b className={r.value >=0 ? 'text-green-600' : 'text-red-600'}>({r.value})</b></span><button onClick={() => firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('reasons').doc(r.id).delete()} className="text-gray-300 hover:text-red-500"><Icon name="trash" size={16}/></button></div>)}
                                     </div>
-                                )}
-                                {activeTab === 'changelog' && (
-                                    <div className="max-w-4xl mx-auto bg-white rounded-2xl border shadow-sm overflow-hidden"><div className="p-6 bg-gray-50 border-b flex items-center justify-between"><h2 className="font-bold text-gray-800">System Activity</h2><Icon name="history" className="text-gray-300" /></div><div className="divide-y max-h-[600px] overflow-y-auto custom-scrollbar">{logs.length === 0 ? <div className="p-12 text-center text-gray-400 italic">No logs recorded</div> : logs.map(log => (<div key={log.id} className="p-6 flex justify-between items-start hover:bg-gray-50 transition-colors"><div className="flex gap-4"><div className={`p-2 rounded-lg ${log.action.includes('Added') ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600'}`}><Icon name="activity" size={18} /></div><div><p className="font-bold text-gray-800 leading-none mb-1">{log.action}</p><p className="text-sm text-gray-500">{log.details}</p></div></div><div className="text-right text-xs text-gray-400"><p className="font-bold text-gray-500 mb-1">{log.admin}</p><p>{log.timestamp?.toDate().toLocaleString()}</p></div></div>))}</div></div>
-                                )}
-                            </div>
-                        )}
+                                </div>
+                            )}
+
+                            {activeTab === 'changelog' && (
+                                <div className="max-w-4xl mx-auto bg-white rounded-2xl border overflow-hidden shadow-sm">
+                                    <div className="p-4 bg-gray-50 border-b flex items-center justify-between font-bold text-gray-700">Recent Activity</div>
+                                    <div className="divide-y max-h-[600px] overflow-y-auto custom-scrollbar">
+                                        {logs.length === 0 ? <div className="p-12 text-center text-gray-400 italic">No activity recorded</div> :
+                                        logs.map(log => (
+                                            <div key={log.id} className="p-4 px-6 flex justify-between items-center hover:bg-gray-50">
+                                                <div><p className="font-bold text-gray-800">{log.action}</p><p className="text-sm text-gray-500">{log.details}</p></div>
+                                                <div className="text-right text-xs text-gray-400 font-medium">
+                                                    <p className="text-gray-600">{log.admin}</p>
+                                                    <p>{log.timestamp?.toDate().toLocaleTimeString()}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </main>
                 </div>
             );
