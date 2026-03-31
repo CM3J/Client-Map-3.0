@@ -37,7 +37,7 @@
         const { useState, useEffect, useMemo, useRef } = React;
 
         // --- FIREBASE INITIALIZATION HELPER ---
-        const initFirebase = (config) => {
+        const initFirebaseInstance = (config) => {
             if (!firebase.apps.length) {
                 firebase.initializeApp(config);
             }
@@ -121,13 +121,13 @@
 
         const App = () => {
             const [user, setUser] = useState(null);
-            const [status, setStatus] = useState('initializing'); // initializing, error, ready
-            const [errorMsg, setErrorMsg] = useState(null);
+            const [status, setStatus] = useState('initializing'); 
+            const [diagnostics, setDiagnostics] = useState({
+                auth: 'pending',
+                firestore: 'pending',
+                error: null
+            });
             
-            // Manual Config state for emergency fallback
-            const [manualConfig, setManualConfig] = useState({ apiKey: '', appId: '' });
-            const [showManualInput, setShowManualInput] = useState(false);
-
             const [activeTab, setActiveTab] = useState('dashboard');
             const [employees, setEmployees] = useState([]);
             const [reasons, setReasons] = useState([]);
@@ -142,84 +142,108 @@
 
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'employee-dash-production';
 
-            // 1. Connection Logic
+            // 1. Connection Logic (Following Rule 3 - Auth First)
             useEffect(() => {
-                const config = typeof __firebase_config !== 'undefined' 
-                    ? JSON.parse(__firebase_config) 
-                    : {
-                        apiKey: manualConfig.apiKey || "AIzaSyDVxpbTHTvMCZR8tkbqVvUbhAKGTmSkL_g",
-                        authDomain: "employee-dashboard-2.firebaseapp.com",
-                        projectId: "employee-dashboard-2",
-                        storageBucket: "employee-dashboard-2.firebasestorage.app",
-                        messagingSenderId: "986398601231",
-                        appId: manualConfig.appId || "1:986398601231:web:1a6d9c9b171ea8236337a"
-                    };
+                const config = {
+                    apiKey: "AIzaSyDVxpbTHTvMCZR8tkbqVvUbhAKGTmSkL_g",
+                    authDomain: "employee-dashboard-2.firebaseapp.com",
+                    projectId: "employee-dashboard-2",
+                    storageBucket: "employee-dashboard-2.firebasestorage.app",
+                    messagingSenderId: "986398601231",
+                    appId: "1:986398601231:web:1a6d9c9b171ea8236337a"
+                };
 
-                try {
-                    const { auth: fbAuth } = initFirebase(config);
-                    
-                    const unsubscribe = fbAuth.onAuthStateChanged(u => {
-                        if (u) {
-                            setUser(u);
-                            setStatus('ready');
+                const setup = async () => {
+                    const fb = initFirebaseInstance(config);
+                    const authInstance = fb.auth;
+
+                    try {
+                        // FIX: Rule 3 Compliance - Try custom token first, BUT guard against mismatch error
+                        // If token exists but fails (e.g. env mismatch), we MUST fallback to anonymous immediately
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            try {
+                                await authInstance.signInWithCustomToken(__initial_auth_token);
+                            } catch (tokenErr) {
+                                console.warn("Custom token failed (mismatch likely), falling back to anonymous:", tokenErr);
+                                await authInstance.signInAnonymously();
+                            }
                         } else {
-                            // Rule 3: Auth first, ensure signIn is called and then status updated
-                            const initAuth = async () => {
-                                try {
-                                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                                        await fbAuth.signInWithCustomToken(__initial_auth_token);
-                                    } else {
-                                        await fbAuth.signInAnonymously();
-                                    }
-                                } catch (err) {
-                                    console.error("Auth initialization failed:", err);
-                                    setErrorMsg(err.message);
-                                    setStatus('error');
-                                }
-                            };
-                            initAuth();
+                            await authInstance.signInAnonymously();
                         }
-                    });
-                    return () => unsubscribe();
-                } catch (e) {
-                    setErrorMsg("Invalid Firebase Configuration");
-                    setStatus('error');
-                }
-            }, [manualConfig]);
+                        
+                        // Set up listener for auth state changes
+                        const unsubscribe = authInstance.onAuthStateChanged((u) => {
+                            if (u) {
+                                setDiagnostics(prev => ({ ...prev, auth: 'success' }));
+                                setUser(u);
+                                setStatus('ready');
+                            }
+                        });
+                        return () => unsubscribe();
+                    } catch (err) {
+                        console.error("Auth Initialization Error:", err);
+                        setDiagnostics(prev => ({ ...prev, auth: 'failed', error: err.message }));
+                        setStatus('error');
+                    }
+                };
 
-            // 2. Data Logic (Ensuring user is present before listening)
+                setup();
+            }, []);
+
+            // 2. Data Logic (Following Rule 1 - Path Structure)
             useEffect(() => {
+                // Rule 3 Guard
                 if (!user) return;
+                
                 const fbDb = firebase.firestore();
-                // Rule 1: Mandatory Path /artifacts/{appId}/public/data/{collectionName}
+                // Rule 1: Mandatory Path structure
                 const getColl = (name) => fbDb.collection('artifacts').doc(appId).collection('public').doc('data').collection(name);
                 
-                const unsub1 = getColl('employees').onSnapshot(
-                    s => setEmployees(s.docs.map(d => ({ id: d.id, ...d.data() }))),
-                    err => console.error("Employees sync error:", err)
-                );
-                const unsub2 = getColl('reasons').onSnapshot(
-                    s => setReasons(s.docs.map(d => ({ id: d.id, ...d.data() }))),
-                    err => console.error("Reasons sync error:", err)
-                );
-                const unsub3 = getColl('points').onSnapshot(
-                    s => {
-                        const d = s.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        // Rule 2: Sorting in memory
-                        setPoints(d.sort((a,b) => (b.timestamp?.seconds||0)-(a.timestamp?.seconds||0)));
-                    },
-                    err => console.error("Points sync error:", err)
-                );
-                const unsub4 = getColl('change_logs').onSnapshot(
-                    s => {
-                        const d = s.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setLogs(d.sort((a,b) => (b.timestamp?.seconds||0)-(a.timestamp?.seconds||0)));
-                    },
-                    err => console.error("Logs sync error:", err)
-                );
+                const unsubscribers = [];
 
-                return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
-            }, [user]);
+                const safeSync = (collName, setter) => {
+                    try {
+                        const unsub = getColl(collName).onSnapshot(
+                            s => {
+                                setDiagnostics(prev => ({ ...prev, firestore: 'success' }));
+                                setter(s.docs.map(d => ({ id: d.id, ...d.data() })));
+                            },
+                            err => {
+                                console.error(`${collName} sync error:`, err);
+                                if (err.code === 'permission-denied') {
+                                    setDiagnostics(prev => ({ 
+                                        ...prev, 
+                                        firestore: 'failed', 
+                                        error: "Permission Denied. Please ensure Firestore rules allow access to /artifacts/" + appId + "/public/data/" 
+                                    }));
+                                    setStatus('error');
+                                }
+                            }
+                        );
+                        unsubscribers.push(unsub);
+                    } catch (e) {
+                        console.error(e);
+                    }
+                };
+
+                safeSync('employees', setEmployees);
+                safeSync('reasons', setReasons);
+                
+                const unsubPoints = getColl('points').onSnapshot(s => {
+                    const d = s.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    // Rule 2: Sorting in memory
+                    setPoints(d.sort((a,b) => (b.timestamp?.seconds||0)-(a.timestamp?.seconds||0)));
+                }, err => console.error(err));
+                unsubscribers.push(unsubPoints);
+
+                const unsubLogs = getColl('change_logs').onSnapshot(s => {
+                    const d = s.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setLogs(d.sort((a,b) => (b.timestamp?.seconds||0)-(a.timestamp?.seconds||0)));
+                }, err => console.error(err));
+                unsubscribers.push(unsubLogs);
+
+                return () => unsubscribers.forEach(fn => fn());
+            }, [user, appId]);
 
             const logAction = async (action, details, admin) => {
                 if (!user) return;
@@ -283,39 +307,58 @@
 
             if (status !== 'ready') {
                 return (
-                    <div className="h-screen flex flex-col items-center justify-center p-6 bg-indigo-50 text-center">
-                        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-                        <h2 className="text-xl font-bold text-indigo-900">Synchronizing Dashboard...</h2>
+                    <div className="h-screen flex flex-col items-center justify-center p-6 bg-slate-900 text-white text-center">
+                        <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-8"></div>
+                        <h2 className="text-2xl font-bold mb-2">Connecting to Data Cloud</h2>
+                        <p className="text-slate-400 mb-12">Checking environment and auth tokens...</p>
                         
-                        {status === 'error' && (
-                            <div className="mt-8 p-6 bg-white rounded-2xl shadow-xl border border-red-100 max-w-md w-full animate-fade-in text-center">
-                                <h3 className="text-red-600 font-bold flex items-center gap-2 mb-2 justify-center"><Icon name="alert-circle"/> Connection Blocked</h3>
-                                <p className="text-sm text-gray-600 mb-4">{errorMsg || "API Key or configuration is invalid."}</p>
-                                <p className="text-xs text-gray-400 mb-4 font-medium uppercase">Required Firebase Setup:</p>
-                                <ul className="text-left text-xs text-gray-500 mb-4 space-y-1 list-disc pl-4">
-                                    <li>Enable <b>Anonymous</b> in Authentication settings</li>
-                                    <li>Add <b>cm3j.github.io</b> to Authorized Domains</li>
-                                    <li>Set Firestore rules to <b>Test Mode</b> (allow read, write)</li>
-                                </ul>
+                        <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 max-w-2xl w-full text-left">
+                            <h3 className="text-sm font-bold uppercase tracking-widest text-slate-500 mb-4">Diagnostics</h3>
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm">Secure Authentication</span>
+                                    <span className={`text-xs font-bold px-2 py-1 rounded ${diagnostics.auth === 'success' ? 'bg-green-500/20 text-green-400' : diagnostics.auth === 'failed' ? 'bg-red-500/20 text-red-400' : 'bg-slate-700 text-slate-400'}`}>
+                                        {diagnostics.auth.toUpperCase()}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm">Firestore Permission</span>
+                                    <span className={`text-xs font-bold px-2 py-1 rounded ${diagnostics.firestore === 'success' ? 'bg-green-500/20 text-green-400' : diagnostics.firestore === 'failed' ? 'bg-red-500/20 text-red-400' : 'bg-slate-700 text-slate-400'}`}>
+                                        {diagnostics.firestore.toUpperCase()}
+                                    </span>
+                                </div>
                                 
-                                {!showManualInput ? (
-                                    <button onClick={() => setShowManualInput(true)} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-bold">Override Keys Manually</button>
-                                ) : (
-                                    <div className="space-y-3">
-                                        <input type="text" placeholder="API Key" className="w-full border p-2 rounded text-sm" value={manualConfig.apiKey} onChange={e => setManualConfig({...manualConfig, apiKey: e.target.value.trim()})} />
-                                        <input type="text" placeholder="App ID" className="w-full border p-2 rounded text-sm" value={manualConfig.appId} onChange={e => setManualConfig({...manualConfig, appId: e.target.value.trim()})} />
-                                        <button onClick={() => setStatus('initializing')} className="w-full bg-green-600 text-white py-2 rounded-lg font-bold">Retry Connection</button>
+                                {diagnostics.error && (
+                                    <div className="mt-4 p-4 bg-red-900/30 border border-red-800/50 rounded-xl">
+                                        <p className="text-xs text-red-300 font-mono mb-4">Error: {diagnostics.error}</p>
+                                        <div className="p-3 bg-black/40 rounded border border-white/10">
+                                            <p className="text-[10px] text-gray-400 uppercase font-bold mb-2 tracking-tight">Required Firestore Rules:</p>
+                                            <pre className="text-[10px] text-indigo-300 overflow-x-auto whitespace-pre">
+{`service cloud.firestore {
+  match /databases/{database}/documents {
+    match /artifacts/${appId}/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}`}
+                                            </pre>
+                                        </div>
                                     </div>
                                 )}
                             </div>
-                        )}
+                            
+                            <div className="mt-6 border-t border-slate-700 pt-6">
+                                <p className="text-xs text-slate-400 mb-4 italic">Action Required: If auth/custom-token-mismatch occurs, ensure Anonymous login is enabled as a fallback in Firebase Console.</p>
+                                <button onClick={() => window.location.reload()} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-bold transition-all">Retry Connection</button>
+                            </div>
+                        </div>
                     </div>
                 );
             }
 
             return (
                 <div className="flex h-screen overflow-hidden">
-                    <aside className="w-64 bg-white border-r flex flex-col p-6 shadow-sm">
+                    <aside className="w-64 bg-white border-r flex flex-col p-6 shadow-sm shrink-0">
                         <div className="flex items-center gap-3 mb-10">
                             <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg"><Icon name="award" size={24} /></div>
                             <span className="text-xl font-bold tracking-tight">TeamPulse</span>
@@ -379,7 +422,7 @@
                                             {reasons.map(r => <option key={r.id} value={r.id}>{r.text} ({r.value})</option>)}
                                         </select>
                                         <input className="w-full p-3 bg-gray-50 border rounded-xl" placeholder="Your Name (Admin)" value={pointForm.admin} onChange={e => setPointForm({...pointForm, admin: e.target.value})} required />
-                                        <textarea className="w-full p-3 bg-gray-50 border rounded-xl" placeholder="Notes..." rows="3" value={pointForm.notes} onChange={e => setPointForm({...pointForm, notes: e.target.value})} />
+                                        <textarea className="w-full p-3 bg-gray-50 border rounded-xl" placeholder="Notes..." rows="3" value={pointForm.notes} onChange={setPointForm ? (e => setPointForm({...pointForm, notes: e.target.value})) : undefined} />
                                         <button className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-100 transition-all hover:bg-indigo-700">Assign Interaction</button>
                                     </form>
                                 </div>
