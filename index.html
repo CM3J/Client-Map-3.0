@@ -23,79 +23,99 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; }
-        .animate-fade-in { animation: fadeIn 0.4s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-900 overflow-hidden">
+<body class="bg-gray-50 text-gray-900 overflow-hidden text-[14px]">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo, useRef } = React;
+        const { useState, useEffect, useMemo, useRef, memo, useCallback } = React;
 
-        // --- FIREBASE INITIALIZATION HELPER ---
+        // --- FIREBASE INITIALIZATION ---
         const initFirebaseInstance = (config) => {
             if (!firebase.apps.length) {
                 firebase.initializeApp(config);
             }
-            return {
-                auth: firebase.auth(),
-                db: firebase.firestore()
-            };
+            return { auth: firebase.auth(), db: firebase.firestore() };
         };
 
-        const Icon = ({ name, size = 20, className = "" }) => {
+        // Icon Component (Memoized for stability)
+        const Icon = memo(({ name, size = 18, className = "" }) => {
             const iconRef = useRef(null);
             useEffect(() => {
                 if (iconRef.current && window.lucide) {
-                    window.lucide.createIcons({ attrs: { size, class: className }, nameAttr: 'data-lucide' });
+                    window.lucide.createIcons({ 
+                        attrs: { size, class: className }, 
+                        nameAttr: 'data-lucide' 
+                    });
                 }
             }, [name, size, className]);
             return <i data-lucide={name} ref={iconRef}></i>;
-        };
+        });
 
-        // --- CHART COMPONENTS ---
-        const TrendChart = ({ data }) => {
+        // Chart Components using useRef to avoid re-rendering issues
+        const ProfileTrendChart = memo(({ data }) => {
             const canvasRef = useRef(null);
             const chartInstance = useRef(null);
+            
             useEffect(() => {
-                if (!canvasRef.current || !data.length) return;
-                if (chartInstance.current) chartInstance.current.destroy();
+                if (!canvasRef.current || !data || data.length === 0) return;
+                
                 const ctx = canvasRef.current.getContext('2d');
+                if (chartInstance.current) {
+                    chartInstance.current.destroy();
+                }
+                
                 chartInstance.current = new Chart(ctx, {
                     type: 'line',
                     data: {
                         labels: data.map(d => d.date),
                         datasets: [{ 
-                            label: 'Points', 
+                            label: 'Daily Points', 
                             data: data.map(d => d.total), 
                             borderColor: '#4f46e5', 
                             tension: 0.3, 
                             fill: true, 
-                            backgroundColor: 'rgba(79, 70, 229, 0.05)' 
+                            backgroundColor: 'rgba(79, 70, 229, 0.05)',
+                            pointBackgroundColor: '#4f46e5',
+                            pointRadius: 4
                         }]
                     },
                     options: { 
                         responsive: true, 
                         maintainAspectRatio: false,
-                        scales: { y: { beginAtZero: true } }
+                        plugins: { legend: { display: false } },
+                        scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
                     }
                 });
-                return () => chartInstance.current?.destroy();
-            }, [data]);
-            return <div className="h-[250px] w-full"><canvas ref={canvasRef}></canvas></div>;
-        };
 
-        const LeaderboardChart = ({ data }) => {
+                return () => {
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+                };
+            }, [data]);
+
+            return <div className="h-[180px] w-full"><canvas ref={canvasRef}></canvas></div>;
+        });
+
+        const LeaderboardChart = memo(({ data }) => {
             const canvasRef = useRef(null);
             const chartInstance = useRef(null);
+            
             useEffect(() => {
-                if (!canvasRef.current || !data.length) return;
-                if (chartInstance.current) chartInstance.current.destroy();
+                if (!canvasRef.current || !data || data.length === 0) return;
+                
                 const ctx = canvasRef.current.getContext('2d');
+                if (chartInstance.current) {
+                    chartInstance.current.destroy();
+                }
+                
                 chartInstance.current = new Chart(ctx, {
                     type: 'bar',
                     data: {
@@ -104,30 +124,31 @@
                             label: 'Score', 
                             data: data.map(d => d.score), 
                             backgroundColor: data.map(d => d.score >= 0 ? '#4f46e5' : '#ef4444'), 
-                            borderRadius: 6 
+                            borderRadius: 4
                         }]
                     },
                     options: { 
                         indexAxis: 'y', 
                         responsive: true, 
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } }
+                        maintainAspectRatio: false, 
+                        plugins: { legend: { display: false } },
+                        scales: { x: { grid: { display: false } } }
                     }
                 });
-                return () => chartInstance.current?.destroy();
+
+                return () => {
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+                };
             }, [data]);
-            return <div className="h-[350px] w-full"><canvas ref={canvasRef}></canvas></div>;
-        };
+
+            return <div className="h-[300px] w-full"><canvas ref={canvasRef}></canvas></div>;
+        });
 
         const App = () => {
             const [user, setUser] = useState(null);
             const [status, setStatus] = useState('initializing'); 
-            const [diagnostics, setDiagnostics] = useState({
-                auth: 'pending',
-                firestore: 'pending',
-                error: null
-            });
-            
             const [activeTab, setActiveTab] = useState('dashboard');
             const [employees, setEmployees] = useState([]);
             const [reasons, setReasons] = useState([]);
@@ -140,9 +161,9 @@
             const [reasonForm, setReasonForm] = useState({ text: "", value: 0 });
             const [pointForm, setPointForm] = useState({ empId: "", reasonId: "", admin: "", notes: "" });
 
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'employee-dash-production';
+            const appId = 'employee-dash-production';
 
-            // 1. Connection Logic (Following Rule 3 - Auth First)
+            // Auth Setup
             useEffect(() => {
                 const config = {
                     apiKey: "AIzaSyDVxpbTHTvMCZR8tkbqVvUbhAKGTmSkL_g",
@@ -155,236 +176,114 @@
 
                 const setup = async () => {
                     const fb = initFirebaseInstance(config);
-                    const authInstance = fb.auth;
-
-                    try {
-                        // FIX: Rule 3 Compliance - Try custom token first, BUT guard against mismatch error
-                        // If token exists but fails (e.g. env mismatch), we MUST fallback to anonymous immediately
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            try {
-                                await authInstance.signInWithCustomToken(__initial_auth_token);
-                            } catch (tokenErr) {
-                                console.warn("Custom token failed (mismatch likely), falling back to anonymous:", tokenErr);
-                                await authInstance.signInAnonymously();
-                            }
+                    fb.auth.onAuthStateChanged(async (u) => {
+                        if (u) {
+                            setUser(u);
+                            setStatus('ready');
                         } else {
-                            await authInstance.signInAnonymously();
+                            try { await fb.auth.signInAnonymously(); } catch (e) { setStatus('error'); }
                         }
-                        
-                        // Set up listener for auth state changes
-                        const unsubscribe = authInstance.onAuthStateChanged((u) => {
-                            if (u) {
-                                setDiagnostics(prev => ({ ...prev, auth: 'success' }));
-                                setUser(u);
-                                setStatus('ready');
-                            }
-                        });
-                        return () => unsubscribe();
-                    } catch (err) {
-                        console.error("Auth Initialization Error:", err);
-                        setDiagnostics(prev => ({ ...prev, auth: 'failed', error: err.message }));
-                        setStatus('error');
-                    }
+                    });
                 };
-
                 setup();
             }, []);
 
-            // 2. Data Logic (Following Rule 1 - Path Structure)
+            // Real-time Data Sync
             useEffect(() => {
-                // Rule 3 Guard
                 if (!user) return;
+                const db = firebase.firestore();
+                const base = db.collection('artifacts').doc(appId).collection('public').doc('data');
                 
-                const fbDb = firebase.firestore();
-                // Rule 1: Mandatory Path structure
-                const getColl = (name) => fbDb.collection('artifacts').doc(appId).collection('public').doc('data').collection(name);
-                
-                const unsubscribers = [];
+                const unsubEmp = base.collection('employees').onSnapshot(s => setEmployees(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+                const unsubRea = base.collection('reasons').onSnapshot(s => setReasons(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+                const unsubPts = base.collection('points').onSnapshot(s => setPoints(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.timestamp?.seconds||0)-(a.timestamp?.seconds||0))));
+                const unsubLog = base.collection('change_logs').onSnapshot(s => setLogs(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.timestamp?.seconds||0)-(a.timestamp?.seconds||0))));
 
-                const safeSync = (collName, setter) => {
-                    try {
-                        const unsub = getColl(collName).onSnapshot(
-                            s => {
-                                setDiagnostics(prev => ({ ...prev, firestore: 'success' }));
-                                setter(s.docs.map(d => ({ id: d.id, ...d.data() })));
-                            },
-                            err => {
-                                console.error(`${collName} sync error:`, err);
-                                if (err.code === 'permission-denied') {
-                                    setDiagnostics(prev => ({ 
-                                        ...prev, 
-                                        firestore: 'failed', 
-                                        error: "Permission Denied. Please ensure Firestore rules allow access to /artifacts/" + appId + "/public/data/" 
-                                    }));
-                                    setStatus('error');
-                                }
-                            }
-                        );
-                        unsubscribers.push(unsub);
-                    } catch (e) {
-                        console.error(e);
-                    }
-                };
+                return () => { unsubEmp(); unsubRea(); unsubPts(); unsubLog(); };
+            }, [user]);
 
-                safeSync('employees', setEmployees);
-                safeSync('reasons', setReasons);
-                
-                const unsubPoints = getColl('points').onSnapshot(s => {
-                    const d = s.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    // Rule 2: Sorting in memory
-                    setPoints(d.sort((a,b) => (b.timestamp?.seconds||0)-(a.timestamp?.seconds||0)));
-                }, err => console.error(err));
-                unsubscribers.push(unsubPoints);
-
-                const unsubLogs = getColl('change_logs').onSnapshot(s => {
-                    const d = s.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setLogs(d.sort((a,b) => (b.timestamp?.seconds||0)-(a.timestamp?.seconds||0)));
-                }, err => console.error(err));
-                unsubscribers.push(unsubLogs);
-
-                return () => unsubscribers.forEach(fn => fn());
-            }, [user, appId]);
-
-            const logAction = async (action, details, admin) => {
-                if (!user) return;
+            const logAction = useCallback(async (action, details, admin) => {
                 await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('change_logs').add({
                     action, details, admin: admin || "Admin", timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
-            };
+            }, [appId]);
 
-            const addEmployee = async (e) => {
-                e.preventDefault();
-                if (!user || !empForm.trim()) return;
-                await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('employees').add({
-                    name: empForm.trim(), timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                await logAction("Employee Added", `Added ${empForm}`, "Admin");
-                setEmpForm("");
-            };
-
-            const assignPoint = async (e) => {
-                e.preventDefault();
-                if (!user) return;
-                const emp = employees.find(e => e.id === pointForm.empId);
+            const handleAssignPoint = useCallback(async (e, specificEmpId = null) => {
+                if (e) e.preventDefault();
+                const targetId = specificEmpId || pointForm.empId;
+                const emp = employees.find(e => e.id === targetId);
                 const reas = reasons.find(r => r.id === pointForm.reasonId);
                 if (!emp || !reas) return;
+
                 await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('points').add({
                     employeeId: emp.id, employeeName: emp.name, reasonText: reas.text,
-                    value: Number(reas.value), admin: pointForm.admin, notes: pointForm.notes,
+                    value: Number(reas.value), admin: pointForm.admin || "Admin", notes: pointForm.notes,
                     monthKey: selectedMonth, timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
-                await logAction("Points Assigned", `${reas.value >= 0 ? '+' : ''}${reas.value} to ${emp.name}`, pointForm.admin);
-                setPointForm({ empId: "", reasonId: "", admin: pointForm.admin, notes: "" });
-            };
+                await logAction("Points Assigned", `${reas.value > 0 ? '+' : ''}${reas.value} to ${emp.name}`, pointForm.admin);
+                setPointForm(prev => ({ ...prev, reasonId: "", notes: "" }));
+            }, [employees, reasons, pointForm, selectedMonth, logAction, appId]);
 
-            const stats = useMemo(() => {
-                const f = points.filter(p => p.monthKey === selectedMonth);
-                return { 
-                    pos: f.filter(p => p.value > 0).reduce((a,b)=>a+b.value,0), 
-                    neg: f.filter(p => p.value < 0).reduce((a,b)=>a+b.value,0), 
-                    total: f.length 
-                };
-            }, [points, selectedMonth]);
+            const removePointEntry = useCallback(async (id, empName, val) => {
+                if (!confirm(`Delete this ${val} pts interaction?`)) return;
+                await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('points').doc(id).delete();
+                await logAction("Points Deleted", `Removed ${val} pts from ${empName}`, "Admin");
+            }, [logAction, appId]);
 
-            const leaderboardData = useMemo(() => {
-                const m = {};
-                employees.forEach(e => m[e.id] = { name: e.name, score: 0 });
-                points.filter(p => p.monthKey === selectedMonth).forEach(p => { if (m[p.employeeId]) m[p.employeeId].score += p.value; });
-                return Object.values(m).sort((a,b) => b.score - a.score);
+            // Analytics Derivations
+            const leaderboard = useMemo(() => {
+                const map = {};
+                employees.forEach(e => map[e.id] = { name: e.name, score: 0 });
+                points.filter(p => p.monthKey === selectedMonth).forEach(p => { if (map[p.employeeId]) map[p.employeeId].score += p.value; });
+                return Object.values(map).sort((a,b) => b.score - a.score);
             }, [employees, points, selectedMonth]);
 
-            const trends = useMemo(() => {
-                if (!selectedEmployeeId) return [];
-                const d = {};
-                points.filter(p => p.employeeId === selectedEmployeeId).forEach(p => {
+            const currentEmployee = useMemo(() => employees.find(e => e.id === selectedEmployeeId), [employees, selectedEmployeeId]);
+            const currentHistory = useMemo(() => points.filter(p => p.employeeId === selectedEmployeeId), [points, selectedEmployeeId]);
+            const currentTrends = useMemo(() => {
+                const map = {};
+                currentHistory.forEach(p => {
                     if (!p.timestamp) return;
-                    const date = p.timestamp.toDate().toLocaleDateString();
-                    if (!d[date]) d[date] = { date, total: 0 };
-                    d[date].total += p.value;
+                    const d = p.timestamp.toDate().toLocaleDateString();
+                    map[d] = (map[d] || 0) + p.value;
                 });
-                return Object.values(d).reverse();
-            }, [points, selectedEmployeeId]);
+                return Object.entries(map).map(([date, total]) => ({ date, total })).reverse();
+            }, [currentHistory]);
 
             if (status !== 'ready') {
                 return (
-                    <div className="h-screen flex flex-col items-center justify-center p-6 bg-slate-900 text-white text-center">
-                        <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-8"></div>
-                        <h2 className="text-2xl font-bold mb-2">Connecting to Data Cloud</h2>
-                        <p className="text-slate-400 mb-12">Checking environment and auth tokens...</p>
-                        
-                        <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 max-w-2xl w-full text-left">
-                            <h3 className="text-sm font-bold uppercase tracking-widest text-slate-500 mb-4">Diagnostics</h3>
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm">Secure Authentication</span>
-                                    <span className={`text-xs font-bold px-2 py-1 rounded ${diagnostics.auth === 'success' ? 'bg-green-500/20 text-green-400' : diagnostics.auth === 'failed' ? 'bg-red-500/20 text-red-400' : 'bg-slate-700 text-slate-400'}`}>
-                                        {diagnostics.auth.toUpperCase()}
-                                    </span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm">Firestore Permission</span>
-                                    <span className={`text-xs font-bold px-2 py-1 rounded ${diagnostics.firestore === 'success' ? 'bg-green-500/20 text-green-400' : diagnostics.firestore === 'failed' ? 'bg-red-500/20 text-red-400' : 'bg-slate-700 text-slate-400'}`}>
-                                        {diagnostics.firestore.toUpperCase()}
-                                    </span>
-                                </div>
-                                
-                                {diagnostics.error && (
-                                    <div className="mt-4 p-4 bg-red-900/30 border border-red-800/50 rounded-xl">
-                                        <p className="text-xs text-red-300 font-mono mb-4">Error: {diagnostics.error}</p>
-                                        <div className="p-3 bg-black/40 rounded border border-white/10">
-                                            <p className="text-[10px] text-gray-400 uppercase font-bold mb-2 tracking-tight">Required Firestore Rules:</p>
-                                            <pre className="text-[10px] text-indigo-300 overflow-x-auto whitespace-pre">
-{`service cloud.firestore {
-  match /databases/{database}/documents {
-    match /artifacts/${appId}/{document=**} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}`}
-                                            </pre>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                            
-                            <div className="mt-6 border-t border-slate-700 pt-6">
-                                <p className="text-xs text-slate-400 mb-4 italic">Action Required: If auth/custom-token-mismatch occurs, ensure Anonymous login is enabled as a fallback in Firebase Console.</p>
-                                <button onClick={() => window.location.reload()} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-bold transition-all">Retry Connection</button>
-                            </div>
-                        </div>
+                    <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+                        <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <h2 className="text-xl font-bold">Connecting TeamPulse Cloud...</h2>
                     </div>
                 );
             }
 
             return (
-                <div className="flex h-screen overflow-hidden">
-                    <aside className="w-64 bg-white border-r flex flex-col p-6 shadow-sm shrink-0">
-                        <div className="flex items-center gap-3 mb-10">
-                            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg"><Icon name="award" size={24} /></div>
-                            <span className="text-xl font-bold tracking-tight">TeamPulse</span>
-                        </div>
+                <div className="flex h-screen overflow-hidden bg-gray-50">
+                    <aside className="w-64 bg-white border-r flex flex-col p-6 shrink-0 shadow-sm">
+                        <div className="flex items-center gap-3 mb-10"><div className="w-9 h-9 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg"><Icon name="award" /></div><span className="text-lg font-bold tracking-tight">TeamPulse</span></div>
                         <nav className="flex-1 space-y-1">
                             {[
                                 {id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard'},
                                 {id: 'assign', label: 'Assign Points', icon: 'plus-circle'},
                                 {id: 'team', label: 'Employees', icon: 'users'},
-                                {id: 'settings', label: 'Library', icon: 'settings'},
+                                {id: 'settings', label: 'Reason Library', icon: 'settings'},
                                 {id: 'changelog', label: 'Activity Log', icon: 'history'}
                             ].map(item => (
-                                <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-3 p-3 px-4 rounded-xl transition-all ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'text-gray-500 hover:bg-gray-100'}`}>
-                                    <Icon name={item.icon} size={18} />
-                                    <span className="font-semibold text-sm">{item.label}</span>
+                                <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-3 p-2.5 px-4 rounded-xl transition-all ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-gray-500 hover:bg-gray-100'}`}>
+                                    <Icon name={item.icon} size={18} /><span className="font-semibold text-[13px]">{item.label}</span>
                                 </button>
                             ))}
                         </nav>
                     </aside>
 
-                    <main className="flex-1 overflow-y-auto p-8 bg-gray-50">
+                    <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                         <header className="flex justify-between items-center mb-8">
-                            <h1 className="text-2xl font-black text-gray-900 capitalize">{activeTab.replace('changelog', 'Activity Log')}</h1>
-                            <div className="bg-white p-2 px-4 rounded-xl border flex items-center gap-2">
-                                <Icon name="calendar" size={16} className="text-indigo-500"/>
-                                <select className="bg-transparent text-sm font-bold outline-none cursor-pointer" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+                            <h1 className="text-xl font-extrabold capitalize">{activeTab.replace('changelog', 'Activity Log')}</h1>
+                            <div className="bg-white p-1.5 px-3 rounded-xl border flex items-center gap-2 shadow-sm text-sm font-bold">
+                                <Icon name="calendar" size={14} className="text-indigo-500" />
+                                <select className="bg-transparent outline-none cursor-pointer" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
                                     {[0,1,2,3,4,5].map(i => {
                                         const d = new Date(); d.setMonth(d.getMonth()-i);
                                         const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -394,59 +293,101 @@
                             </div>
                         </header>
 
-                        <div className="animate-fade-in max-w-6xl mx-auto">
+                        <div className="max-w-6xl mx-auto animate-fade-in">
                             {activeTab === 'dashboard' && (
                                 <div className="space-y-6">
-                                    <div className="grid grid-cols-3 gap-6">
-                                        <div className="bg-white p-6 rounded-2xl border shadow-sm"><p className="text-xs font-bold text-gray-400 uppercase mb-1">Positive</p><h3 className="text-3xl font-black text-green-600">+{stats.pos}</h3></div>
-                                        <div className="bg-white p-6 rounded-2xl border shadow-sm"><p className="text-xs font-bold text-gray-400 uppercase mb-1">Negative</p><h3 className="text-3xl font-black text-red-600">{stats.neg}</h3></div>
-                                        <div className="bg-white p-6 rounded-2xl border shadow-sm"><p className="text-xs font-bold text-gray-400 uppercase mb-1">Actions</p><h3 className="text-3xl font-black text-indigo-600">{stats.total}</h3></div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Positives</p><h3 className="text-2xl font-black text-green-600">+{points.filter(p => p.monthKey === selectedMonth && p.value > 0).reduce((a,b)=>a+b.value,0)}</h3></div>
+                                        <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Negatives</p><h3 className="text-2xl font-black text-red-600">{points.filter(p => p.monthKey === selectedMonth && p.value < 0).reduce((a,b)=>a+b.value,0)}</h3></div>
+                                        <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Total Interactions</p><h3 className="text-2xl font-black text-indigo-600">{points.filter(p => p.monthKey === selectedMonth).length}</h3></div>
                                     </div>
                                     <div className="bg-white p-8 rounded-2xl border shadow-sm">
-                                        <h2 className="font-bold mb-6 text-lg flex items-center gap-2"><Icon name="bar-chart" className="text-indigo-500"/> Monthly Leaderboard</h2>
-                                        <LeaderboardChart data={leaderboardData} />
+                                        <h2 className="font-bold mb-6 text-sm uppercase tracking-widest text-gray-400 flex items-center gap-2"><Icon name="bar-chart"/> Monthly Team Overview</h2>
+                                        {leaderboard.length > 0 ? <LeaderboardChart data={leaderboard} /> : <div className="p-20 text-center text-gray-400">No data for this month.</div>}
                                     </div>
                                 </div>
                             )}
 
                             {activeTab === 'assign' && (
                                 <div className="max-w-xl mx-auto bg-white p-10 rounded-3xl border shadow-sm">
-                                    <h2 className="text-xl font-bold mb-6">Assign Interaction</h2>
-                                    <form onSubmit={assignPoint} className="space-y-4">
-                                        <select className="w-full p-3 bg-gray-50 border rounded-xl" value={pointForm.empId} onChange={e => setPointForm({...pointForm, empId: e.target.value})} required>
-                                            <option value="">Target Employee...</option>
-                                            {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                                        </select>
-                                        <select className="w-full p-3 bg-gray-50 border rounded-xl" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})} required>
-                                            <option value="">Interaction Reason...</option>
-                                            {reasons.map(r => <option key={r.id} value={r.id}>{r.text} ({r.value})</option>)}
-                                        </select>
-                                        <input className="w-full p-3 bg-gray-50 border rounded-xl" placeholder="Your Name (Admin)" value={pointForm.admin} onChange={e => setPointForm({...pointForm, admin: e.target.value})} required />
-                                        <textarea className="w-full p-3 bg-gray-50 border rounded-xl" placeholder="Notes..." rows="3" value={pointForm.notes} onChange={setPointForm ? (e => setPointForm({...pointForm, notes: e.target.value})) : undefined} />
-                                        <button className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-100 transition-all hover:bg-indigo-700">Assign Interaction</button>
+                                    <h2 className="text-lg font-bold mb-6 text-gray-800">New Interaction Record</h2>
+                                    <form onSubmit={handleAssignPoint} className="space-y-4">
+                                        <select className="w-full p-3 bg-gray-50 border rounded-xl" value={pointForm.empId} onChange={e => setPointForm({...pointForm, empId: e.target.value})} required><option value="">Select Employee...</option>{employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
+                                        <select className="w-full p-3 bg-gray-50 border rounded-xl" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})} required><option value="">Select Interaction Preset...</option>{reasons.map(r => <option key={r.id} value={r.id}>{r.text} ({r.value})</option>)}</select>
+                                        <input className="w-full p-3 bg-gray-50 border rounded-xl" placeholder="Administrative Witness (Your Name)" value={pointForm.admin} onChange={e => setPointForm({...pointForm, admin: e.target.value})} required />
+                                        <textarea className="w-full p-3 bg-gray-50 border rounded-xl" placeholder="Detailed notes regarding this event..." rows="3" value={pointForm.notes} onChange={e => setPointForm({...pointForm, notes: e.target.value})} />
+                                        <button className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-colors">Submit Record</button>
                                     </form>
                                 </div>
                             )}
 
                             {activeTab === 'team' && (
-                                <div className="grid grid-cols-3 gap-6">
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                                     <div className="col-span-1 space-y-4">
-                                        <form onSubmit={addEmployee} className="flex gap-2"><input className="flex-1 border p-3 rounded-xl" placeholder="Add Name..." value={empForm} onChange={e => setEmpForm(e.target.value)} required/><button className="bg-indigo-600 text-white px-4 rounded-xl"><Icon name="plus" size={18}/></button></form>
-                                        <div className="bg-white rounded-xl border overflow-hidden divide-y max-h-[500px] overflow-y-auto custom-scrollbar">
-                                            {employees.length === 0 ? <div className="p-4 text-center text-gray-400 text-sm italic">No employees yet</div> :
-                                            employees.map(e => <button key={e.id} onClick={() => setSelectedEmployeeId(e.id)} className={`w-full text-left p-4 transition-all hover:bg-gray-50 ${selectedEmployeeId === e.id ? 'bg-indigo-50 border-r-4 border-indigo-600 font-bold text-indigo-700' : ''}`}>{e.name}</button>)}
+                                        <form onSubmit={(e) => { e.preventDefault(); if(empForm) { firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('employees').add({name: empForm.trim(), createdAt: firebase.firestore.FieldValue.serverTimestamp()}); setEmpForm(""); } }} className="flex gap-2"><input className="flex-1 border p-3 rounded-xl bg-white" placeholder="Add Employee Name..." value={empForm} onChange={e => setEmpForm(e.target.value)} required/><button className="bg-indigo-600 text-white px-4 rounded-xl shadow-md hover:bg-indigo-700 transition-colors"><Icon name="plus" /></button></form>
+                                        <div className="bg-white rounded-xl border overflow-hidden divide-y shadow-sm">
+                                            {employees.length === 0 ? <div className="p-8 text-center text-gray-400 italic">No team members.</div> :
+                                            employees.map(e => (
+                                                <button key={e.id} onClick={() => setSelectedEmployeeId(e.id)} className={`w-full text-left p-4 transition-all hover:bg-gray-50 ${selectedEmployeeId === e.id ? 'bg-indigo-50 border-r-4 border-indigo-600 font-bold text-indigo-700' : 'text-gray-600'}`}>{e.name}</button>
+                                            ))}
                                         </div>
                                     </div>
-                                    <div className="col-span-2 bg-white p-8 rounded-2xl border shadow-sm min-h-[400px]">
-                                        {selectedEmployeeId ? (
-                                            <div>
-                                                <div className="flex justify-between mb-8 items-center border-b pb-4">
-                                                    <h2 className="text-2xl font-black">{employees.find(e => e.id === selectedEmployeeId)?.name}</h2>
-                                                    <button onClick={async () => { if(confirm("Delete employee?")){ await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('employees').doc(selectedEmployeeId).delete(); setSelectedEmployeeId(null); } }} className="text-gray-300 hover:text-red-500"><Icon name="trash-2" size={20}/></button>
+                                    <div className="col-span-2">
+                                        {currentEmployee ? (
+                                            <div className="space-y-6 animate-fade-in" key={currentEmployee.id}>
+                                                <div className="bg-white p-8 rounded-2xl border shadow-sm">
+                                                    <div className="flex justify-between items-center mb-6 border-b pb-4">
+                                                        <div>
+                                                            <h2 className="text-2xl font-black text-gray-800 tracking-tight">{currentEmployee.name}</h2>
+                                                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Live Employee Profile</p>
+                                                        </div>
+                                                        <button onClick={() => { if(confirm(`Delete ${currentEmployee.name}? This will not delete their history.`)) { firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('employees').doc(selectedEmployeeId).delete(); setSelectedEmployeeId(null); } }} className="text-red-300 hover:text-red-500 transition-colors p-2"><Icon name="trash-2" /></button>
+                                                    </div>
+                                                    {currentTrends.length > 0 ? <ProfileTrendChart data={currentTrends} /> : <div className="h-[180px] flex items-center justify-center text-gray-300 italic border rounded-xl bg-gray-50">No trend data available yet.</div>}
                                                 </div>
-                                                <TrendChart data={trends} />
+
+                                                <div className="bg-indigo-600 p-6 rounded-2xl text-white shadow-lg shadow-indigo-100">
+                                                    <h3 className="font-bold mb-4 flex items-center gap-2"><Icon name="zap" /> Award Interaction Directly</h3>
+                                                    <div className="flex gap-3">
+                                                        <select className="flex-1 p-2 bg-indigo-500/50 border border-indigo-400 rounded-lg text-white font-bold outline-none" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})}>
+                                                            <option value="" className="text-gray-900">Select Preset...</option>
+                                                            {reasons.map(r => <option key={r.id} value={r.id} className="text-gray-900">{r.text} ({r.value} pts)</option>)}
+                                                        </select>
+                                                        <input className="w-32 p-2 bg-indigo-500/50 border border-indigo-400 rounded-lg text-white placeholder-indigo-300 font-bold outline-none" placeholder="Admin" value={pointForm.admin} onChange={e => setPointForm({...pointForm, admin: e.target.value})} />
+                                                        <button onClick={(e) => handleAssignPoint(e, selectedEmployeeId)} className="bg-white text-indigo-600 px-6 py-2 rounded-lg font-black hover:bg-gray-100 transition-all active:scale-95 shadow-md">ADD</button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+                                                    <div className="p-4 bg-gray-50 border-b flex justify-between items-center"><h3 className="font-bold text-gray-700">Detailed Interaction History</h3><span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">{currentHistory.length} Record(s)</span></div>
+                                                    <div className="divide-y max-h-[500px] overflow-y-auto custom-scrollbar">
+                                                        {currentHistory.length === 0 ? <div className="p-16 text-center text-gray-400 italic">No history recorded for this employee. Use the panel above to start tracking.</div> :
+                                                        currentHistory.map(h => (
+                                                            <div key={h.id} className="p-5 flex justify-between items-start group hover:bg-gray-50 transition-colors">
+                                                                <div className="flex gap-4">
+                                                                    <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${h.value > 0 ? 'bg-green-500 shadow-sm shadow-green-200' : 'bg-red-500 shadow-sm shadow-red-200'}`} />
+                                                                    <div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <p className="font-bold text-gray-800 leading-tight">{h.reasonText}</p>
+                                                                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${h.value > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{h.value > 0 ? '+' : ''}{h.value}</span>
+                                                                        </div>
+                                                                        <p className="text-xs text-gray-500 mt-1 max-w-md">{h.notes || "No contextual notes recorded."}</p>
+                                                                        <div className="flex gap-3 text-[10px] font-bold text-gray-400 mt-2 uppercase tracking-tight">
+                                                                            <span className="flex items-center gap-1"><Icon name="user" size={10}/> {h.admin || "Admin"}</span>
+                                                                            <span>•</span>
+                                                                            <span className="flex items-center gap-1"><Icon name="clock" size={10}/> {h.timestamp?.toDate().toLocaleString() || 'Syncing...'}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <button onClick={() => removePointEntry(h.id, h.employeeName, h.value)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all p-1 active:scale-90"><Icon name="x-circle" size={18} /></button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                             </div>
-                                        ) : <div className="h-full flex flex-col items-center justify-center text-gray-400 italic"><Icon name="user" size={48} className="mb-2 opacity-20"/>Select an employee profile</div>}
+                                        ) : (
+                                            <div className="h-full min-h-[400px] bg-white rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-300 italic"><Icon name="users" size={48} className="mb-4 opacity-5" />Select an employee from the list to view their detailed dossier</div>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -454,32 +395,38 @@
                             {activeTab === 'settings' && (
                                 <div className="max-w-2xl mx-auto space-y-6">
                                     <div className="bg-white p-8 rounded-2xl border shadow-sm">
-                                        <h3 className="font-bold mb-4 flex items-center gap-2"><Icon name="list" className="text-indigo-500"/> Reason Library</h3>
+                                        <h3 className="font-bold mb-4 text-gray-800">Define Library Reasons</h3>
+                                        <p className="text-xs text-gray-400 mb-6 italic">Presets allow for fast, standardized tracking across the team.</p>
                                         <div className="flex gap-2">
-                                            <input className="flex-[3] border p-3 rounded-xl bg-gray-50" placeholder="Reason Title" value={reasonForm.text} onChange={e => setReasonForm({...reasonForm, text: e.target.value})}/>
-                                            <input className="flex-1 border p-3 rounded-xl bg-gray-50" type="number" placeholder="Pts" value={reasonForm.value} onChange={e => setReasonForm({...reasonForm, value: e.target.value})}/>
-                                            <button onClick={async () => { if(!reasonForm.text) return; await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('reasons').add({...reasonForm, value: Number(reasonForm.value)}); setReasonForm({text:"", value:0}); }} className="bg-indigo-600 text-white px-6 rounded-xl font-bold">Add</button>
+                                            <input className="flex-[3] border p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 ring-indigo-500/20" placeholder="Preset Title (e.g. Project Excellence)" value={reasonForm.text} onChange={e => setReasonForm({...reasonForm, text: e.target.value})}/>
+                                            <input className="flex-1 border p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 ring-indigo-500/20" type="number" placeholder="Value" value={reasonForm.value} onChange={e => setReasonForm({...reasonForm, value: e.target.value})}/>
+                                            <button onClick={async () => { if(!reasonForm.text) return; await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('reasons').add({...reasonForm, value: Number(reasonForm.value)}); setReasonForm({text:"", value:0}); }} className="bg-indigo-600 text-white px-6 rounded-xl font-bold hover:bg-indigo-700 shadow-md transition-all">Add</button>
                                         </div>
                                     </div>
-                                    <div className="bg-white rounded-xl border divide-y overflow-hidden shadow-sm max-h-[400px] overflow-y-auto custom-scrollbar">
-                                        {reasons.length === 0 ? <div className="p-4 text-center text-gray-400 italic">No reasons configured</div> :
-                                        reasons.map(r => <div key={r.id} className="p-4 flex justify-between items-center hover:bg-gray-50"><span>{r.text} <b className={r.value >=0 ? 'text-green-600' : 'text-red-600'}>({r.value})</b></span><button onClick={() => firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('reasons').doc(r.id).delete()} className="text-gray-300 hover:text-red-500"><Icon name="trash" size={16}/></button></div>)}
+                                    <div className="bg-white rounded-xl border divide-y shadow-sm overflow-hidden">
+                                        {reasons.length === 0 ? <div className="p-12 text-center text-gray-400 italic">Reason library is empty.</div> :
+                                        reasons.map(r => (
+                                            <div key={r.id} className="p-4 px-6 flex justify-between items-center hover:bg-gray-50 group">
+                                                <span className="font-medium text-gray-700">{r.text} <b className={`ml-2 ${r.value >=0 ? 'text-green-500' : 'text-red-500'}`}>({r.value > 0 ? '+' : ''}{r.value})</b></span>
+                                                <button onClick={() => firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('reasons').doc(r.id).delete()} className="text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"><Icon name="trash" size={14}/></button>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             )}
 
                             {activeTab === 'changelog' && (
-                                <div className="max-w-4xl mx-auto bg-white rounded-2xl border overflow-hidden shadow-sm">
-                                    <div className="p-4 bg-gray-50 border-b flex items-center justify-between font-bold text-gray-700">Recent Activity</div>
+                                <div className="max-w-4xl mx-auto bg-white rounded-2xl border shadow-sm overflow-hidden">
+                                    <div className="p-4 bg-gray-50 border-b flex justify-between items-center"><h3 className="font-bold text-gray-700">Audit & Change History</h3><Icon name="history" className="text-gray-300" /></div>
                                     <div className="divide-y max-h-[600px] overflow-y-auto custom-scrollbar">
-                                        {logs.length === 0 ? <div className="p-12 text-center text-gray-400 italic">No activity recorded</div> :
+                                        {logs.length === 0 ? <div className="p-20 text-center text-gray-400 italic">No system activity logged.</div> :
                                         logs.map(log => (
-                                            <div key={log.id} className="p-4 px-6 flex justify-between items-center hover:bg-gray-50">
-                                                <div><p className="font-bold text-gray-800">{log.action}</p><p className="text-sm text-gray-500">{log.details}</p></div>
-                                                <div className="text-right text-xs text-gray-400 font-medium">
-                                                    <p className="text-gray-600">{log.admin}</p>
-                                                    <p>{log.timestamp?.toDate().toLocaleTimeString()}</p>
+                                            <div key={log.id} className="p-4 px-6 flex justify-between items-center hover:bg-gray-50 transition-colors">
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`p-1.5 rounded-full ${log.action.includes('Assigned') ? 'bg-indigo-50 text-indigo-500' : 'bg-gray-100 text-gray-500'}`}><Icon name="activity" size={14}/></div>
+                                                    <div><p className="font-bold text-gray-800 leading-tight mb-0.5">{log.action}</p><p className="text-xs text-gray-500">{log.details}</p></div>
                                                 </div>
+                                                <div className="text-right text-[10px] text-gray-400 font-bold uppercase tracking-widest"><p className="text-gray-600">{log.admin}</p><p>{log.timestamp?.toDate().toLocaleTimeString() || 'Recording...'}</p></div>
                                             </div>
                                         ))}
                                     </div>
