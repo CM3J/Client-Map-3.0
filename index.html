@@ -3,62 +3,137 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Employee Points Dashboard</title>
-    <!-- Tailwind CSS -->
+    <title>TeamPulse | Gamified Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@700&display=swap');
+        
+        * { box-sizing: border-box; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .font-display { font-family: 'Space Grotesk', sans-serif; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes scaleIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+        @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-10px); } }
+        @keyframes glow { 0%, 100% { box-shadow: 0 0 20px rgba(124, 58, 237, 0.5); } 50% { box-shadow: 0 0 40px rgba(124, 58, 237, 0.8); } }
+        
+        .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+        .animate-scale-in { animation: scaleIn 0.3s ease-out; }
+        .animate-pulse-once { animation: pulse 0.6s ease-out; }
+        .animate-float { animation: float 3s ease-in-out infinite; }
+        .animate-glow { animation: glow 2s ease-in-out infinite; }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 10px; }
+        
+        .glass {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .trophy-gold { color: #FFD700; filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.6)); }
+        .trophy-silver { color: #C0C0C0; filter: drop-shadow(0 0 8px rgba(192, 192, 192, 0.6)); }
+        .trophy-bronze { color: #CD7F32; filter: drop-shadow(0 0 8px rgba(205, 127, 50, 0.6)); }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-900 overflow-hidden text-[14px]">
+<body class="overflow-hidden">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef, memo, useCallback } = React;
 
-        // --- FIREBASE INITIALIZATION ---
-        const initFirebaseInstance = (config) => {
-            if (!firebase.apps.length) {
-                firebase.initializeApp(config);
+        const confettiCelebration = (origin = { x: 0.5, y: 0.5 }) => {
+            const count = 200;
+            const defaults = { origin, spread: 360, ticks: 100, gravity: 1, decay: 0.94, startVelocity: 30, colors: ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#43e97b'] };
+            
+            function shoot() {
+                confetti({ ...defaults, particleCount: Math.floor(count * 0.25), scalar: 1.2, shapes: ['star'] });
+                confetti({ ...defaults, particleCount: Math.floor(count * 0.2), scalar: 0.75, shapes: ['circle'] });
+                confetti({ ...defaults, particleCount: Math.floor(count * 0.35), scalar: 1, shapes: ['square'] });
             }
+            
+            setTimeout(shoot, 0);
+            setTimeout(shoot, 100);
+            setTimeout(shoot, 200);
+        };
+
+        const initFirebaseInstance = (config) => {
+            if (!firebase.apps.length) firebase.initializeApp(config);
             return { auth: firebase.auth(), db: firebase.firestore() };
         };
 
-        // Icon Component (Memoized for stability)
         const Icon = memo(({ name, size = 18, className = "" }) => {
             const iconRef = useRef(null);
             useEffect(() => {
                 if (iconRef.current && window.lucide) {
-                    window.lucide.createIcons({ 
-                        attrs: { size, class: className }, 
-                        nameAttr: 'data-lucide' 
-                    });
+                    window.lucide.createIcons({ attrs: { size, class: className }, nameAttr: 'data-lucide' });
                 }
             }, [name, size, className]);
             return <i data-lucide={name} ref={iconRef}></i>;
         });
 
-        // Chart Components using useRef to avoid re-rendering issues
+        const ACHIEVEMENTS = [
+            { id: 'first_point', name: 'First Steps', desc: 'Award your first point', icon: 'star', color: 'blue', threshold: 1 },
+            { id: 'ten_points', name: 'Getting Started', desc: 'Award 10 points total', icon: 'trending-up', color: 'green', threshold: 10 },
+            { id: 'fifty_points', name: 'Team Builder', desc: 'Award 50 points total', icon: 'users', color: 'purple', threshold: 50 },
+            { id: 'hundred_points', name: 'Master Motivator', desc: 'Award 100 points total', icon: 'zap', color: 'yellow', threshold: 100 },
+            { id: 'five_employees', name: 'Growing Team', desc: 'Add 5 team members', icon: 'user-plus', color: 'pink', threshold: 5 },
+        ];
+
+        const getAchievementColor = (color) => {
+            const colors = {
+                blue: 'from-blue-400 to-blue-600',
+                green: 'from-green-400 to-green-600',
+                purple: 'from-purple-400 to-purple-600',
+                yellow: 'from-yellow-400 to-yellow-600',
+                pink: 'from-pink-400 to-pink-600',
+            };
+            return colors[color] || colors.blue;
+        };
+
+        const AchievementBadge = ({ achievement, unlocked, progress }) => (
+            <div className={`relative p-4 rounded-xl border-2 transition-all ${unlocked ? 'glass border-white shadow-xl' : 'bg-gray-100 border-gray-300 opacity-60'}`}>
+                <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${getAchievementColor(achievement.color)} flex items-center justify-center mb-2 mx-auto ${unlocked ? 'animate-pulse-once' : 'grayscale'}`}>
+                    <Icon name={achievement.icon} size={24} className="text-white" />
+                </div>
+                <h4 className="font-bold text-xs text-center text-gray-800">{achievement.name}</h4>
+                <p className="text-[10px] text-gray-500 text-center mt-1">{achievement.desc}</p>
+                {!unlocked && progress !== undefined && (
+                    <div className="mt-2">
+                        <div className="w-full bg-gray-200 rounded-full h-1.5">
+                            <div className="bg-gradient-to-r from-purple-500 to-pink-500 h-1.5 rounded-full transition-all" style={{ width: `${Math.min(100, (progress / achievement.threshold) * 100)}%` }}></div>
+                        </div>
+                        <p className="text-[9px] text-gray-400 text-center mt-1">{progress}/{achievement.threshold}</p>
+                    </div>
+                )}
+                {unlocked && <div className="absolute -top-2 -right-2 bg-yellow-400 rounded-full p-1 shadow-lg"><Icon name="check" size={12} className="text-yellow-900" /></div>}
+            </div>
+        );
+
         const ProfileTrendChart = memo(({ data }) => {
             const canvasRef = useRef(null);
             const chartInstance = useRef(null);
@@ -67,41 +142,59 @@
                 if (!canvasRef.current || !data || data.length === 0) return;
                 
                 const ctx = canvasRef.current.getContext('2d');
-                if (chartInstance.current) {
-                    chartInstance.current.destroy();
-                }
+                if (chartInstance.current) chartInstance.current.destroy();
+                
+                const gradient = ctx.createLinearGradient(0, 0, 0, 180);
+                gradient.addColorStop(0, 'rgba(102, 126, 234, 0.3)');
+                gradient.addColorStop(1, 'rgba(102, 126, 234, 0.01)');
                 
                 chartInstance.current = new Chart(ctx, {
                     type: 'line',
                     data: {
                         labels: data.map(d => d.date),
                         datasets: [{ 
-                            label: 'Daily Points', 
+                            label: 'Points', 
                             data: data.map(d => d.total), 
-                            borderColor: '#4f46e5', 
-                            tension: 0.3, 
+                            borderColor: '#667eea',
+                            borderWidth: 3,
+                            tension: 0.4, 
                             fill: true, 
-                            backgroundColor: 'rgba(79, 70, 229, 0.05)',
-                            pointBackgroundColor: '#4f46e5',
-                            pointRadius: 4
+                            backgroundColor: gradient,
+                            pointBackgroundColor: '#667eea',
+                            pointRadius: 5,
+                            pointHoverRadius: 7,
+                            pointBorderWidth: 2,
+                            pointBorderColor: '#fff'
                         }]
                     },
                     options: { 
                         responsive: true, 
                         maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
+                        plugins: { 
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                padding: 12,
+                                cornerRadius: 8,
+                            }
+                        },
+                        scales: { 
+                            y: { 
+                                beginAtZero: true,
+                                grid: { color: 'rgba(0, 0, 0, 0.05)' },
+                            }, 
+                            x: { 
+                                grid: { display: false },
+                            } 
+                        },
+                        animation: { duration: 1000, easing: 'easeOutQuart' }
                     }
                 });
 
-                return () => {
-                    if (chartInstance.current) {
-                        chartInstance.current.destroy();
-                    }
-                };
+                return () => { if (chartInstance.current) chartInstance.current.destroy(); };
             }, [data]);
 
-            return <div className="h-[180px] w-full"><canvas ref={canvasRef}></canvas></div>;
+            return <div className="h-[200px] w-full"><canvas ref={canvasRef}></canvas></div>;
         });
 
         const LeaderboardChart = memo(({ data }) => {
@@ -112,9 +205,7 @@
                 if (!canvasRef.current || !data || data.length === 0) return;
                 
                 const ctx = canvasRef.current.getContext('2d');
-                if (chartInstance.current) {
-                    chartInstance.current.destroy();
-                }
+                if (chartInstance.current) chartInstance.current.destroy();
                 
                 chartInstance.current = new Chart(ctx, {
                     type: 'bar',
@@ -123,8 +214,20 @@
                         datasets: [{ 
                             label: 'Score', 
                             data: data.map(d => d.score), 
-                            backgroundColor: data.map(d => d.score >= 0 ? '#4f46e5' : '#ef4444'), 
-                            borderRadius: 4
+                            backgroundColor: data.map((d, i) => {
+                                if (i === 0) return 'rgba(255, 215, 0, 0.8)';
+                                if (i === 1) return 'rgba(192, 192, 192, 0.8)';
+                                if (i === 2) return 'rgba(205, 127, 50, 0.8)';
+                                return d.score >= 0 ? 'rgba(102, 126, 234, 0.8)' : 'rgba(239, 68, 68, 0.8)';
+                            }),
+                            borderRadius: 8,
+                            borderWidth: 2,
+                            borderColor: data.map((d, i) => {
+                                if (i === 0) return '#FFD700';
+                                if (i === 1) return '#C0C0C0';
+                                if (i === 2) return '#CD7F32';
+                                return d.score >= 0 ? '#667eea' : '#ef4444';
+                            })
                         }]
                     },
                     options: { 
@@ -132,20 +235,28 @@
                         responsive: true, 
                         maintainAspectRatio: false, 
                         plugins: { legend: { display: false } },
-                        scales: { x: { grid: { display: false } } }
+                        scales: { x: { grid: { color: 'rgba(0, 0, 0, 0.05)' } } },
+                        animation: { duration: 1200, easing: 'easeOutQuart' }
                     }
                 });
 
-                return () => {
-                    if (chartInstance.current) {
-                        chartInstance.current.destroy();
-                    }
-                };
+                return () => { if (chartInstance.current) chartInstance.current.destroy(); };
             }, [data]);
 
-            return <div className="h-[300px] w-full"><canvas ref={canvasRef}></canvas></div>;
+            return <div className="h-[350px] w-full"><canvas ref={canvasRef}></canvas></div>;
         });
 
+        const StatCard = ({ icon, label, value, color }) => (
+            <div className="glass rounded-2xl p-6 border border-white shadow-xl animate-fade-in hover:scale-105 transition-transform">
+                <div className="flex items-start justify-between mb-3">
+                    <div className={`p-3 rounded-xl bg-gradient-to-br ${color} shadow-lg`}>
+                        <Icon name={icon} size={24} className="text-white" />
+                    </div>
+                </div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">{label}</p>
+                <h3 className="text-3xl font-black font-display gradient-text">{value}</h3>
+            </div>
+        );
         const App = () => {
             const [user, setUser] = useState(null);
             const [status, setStatus] = useState('initializing'); 
@@ -156,6 +267,8 @@
             const [logs, setLogs] = useState([]);
             const [selectedMonth, setSelectedMonth] = useState(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
             const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
+            const [achievements, setAchievements] = useState([]);
+            const [showAchievement, setShowAchievement] = useState(null);
 
             const [empForm, setEmpForm] = useState("");
             const [reasonForm, setReasonForm] = useState({ text: "", value: 0 });
@@ -163,7 +276,6 @@
 
             const appId = 'employee-dash-production';
 
-            // Auth Setup
             useEffect(() => {
                 const config = {
                     apiKey: "AIzaSyDVxpbTHTvMCZR8tkbqVvUbhAKGTmSkL_g",
@@ -188,7 +300,6 @@
                 setup();
             }, []);
 
-            // Real-time Data Sync
             useEffect(() => {
                 if (!user) return;
                 const db = firebase.firestore();
@@ -198,8 +309,9 @@
                 const unsubRea = base.collection('reasons').onSnapshot(s => setReasons(s.docs.map(d => ({ id: d.id, ...d.data() }))));
                 const unsubPts = base.collection('points').onSnapshot(s => setPoints(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.timestamp?.seconds||0)-(a.timestamp?.seconds||0))));
                 const unsubLog = base.collection('change_logs').onSnapshot(s => setLogs(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.timestamp?.seconds||0)-(a.timestamp?.seconds||0))));
+                const unsubAch = base.collection('achievements').onSnapshot(s => setAchievements(s.docs.map(d => ({ id: d.id, ...d.data() }))));
 
-                return () => { unsubEmp(); unsubRea(); unsubPts(); unsubLog(); };
+                return () => { unsubEmp(); unsubRea(); unsubPts(); unsubLog(); unsubAch(); };
             }, [user]);
 
             const logAction = useCallback(async (action, details, admin) => {
@@ -207,6 +319,31 @@
                     action, details, admin: admin || "Admin", timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
             }, [appId]);
+
+            const checkAndUnlockAchievement = useCallback(async (achievementId) => {
+                const existing = achievements.find(a => a.id === achievementId);
+                if (existing) return;
+
+                const achievement = ACHIEVEMENTS.find(a => a.id === achievementId);
+                await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('achievements').doc(achievementId).set({
+                    unlockedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                setShowAchievement(achievement);
+                confettiCelebration();
+                setTimeout(() => setShowAchievement(null), 4000);
+            }, [achievements, appId]);
+
+            useEffect(() => {
+                const totalPoints = points.length;
+                const totalEmployees = employees.length;
+
+                if (totalPoints >= 1 && !achievements.find(a => a.id === 'first_point')) checkAndUnlockAchievement('first_point');
+                if (totalPoints >= 10 && !achievements.find(a => a.id === 'ten_points')) checkAndUnlockAchievement('ten_points');
+                if (totalPoints >= 50 && !achievements.find(a => a.id === 'fifty_points')) checkAndUnlockAchievement('fifty_points');
+                if (totalPoints >= 100 && !achievements.find(a => a.id === 'hundred_points')) checkAndUnlockAchievement('hundred_points');
+                if (totalEmployees >= 5 && !achievements.find(a => a.id === 'five_employees')) checkAndUnlockAchievement('five_employees');
+            }, [points, employees, achievements, checkAndUnlockAchievement]);
 
             const handleAssignPoint = useCallback(async (e, specificEmpId = null) => {
                 if (e) e.preventDefault();
@@ -221,6 +358,11 @@
                     monthKey: selectedMonth, timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 await logAction("Points Assigned", `${reas.value > 0 ? '+' : ''}${reas.value} to ${emp.name}`, pointForm.admin);
+                
+                if (reas.value > 0) {
+                    confettiCelebration({ x: 0.5, y: 0.6 });
+                }
+                
                 setPointForm(prev => ({ ...prev, reasonId: "", notes: "" }));
             }, [employees, reasons, pointForm, selectedMonth, logAction, appId]);
 
@@ -230,7 +372,6 @@
                 await logAction("Points Deleted", `Removed ${val} pts from ${empName}`, "Admin");
             }, [logAction, appId]);
 
-            // Analytics Derivations
             const leaderboard = useMemo(() => {
                 const map = {};
                 employees.forEach(e => map[e.id] = { name: e.name, score: 0 });
@@ -247,43 +388,118 @@
                     const d = p.timestamp.toDate().toLocaleDateString();
                     map[d] = (map[d] || 0) + p.value;
                 });
-                return Object.entries(map).map(([date, total]) => ({ date, total })).reverse();
+                return Object.entries(map).map(([date, total]) => ({ date, total })).slice(-14).reverse();
             }, [currentHistory]);
+
+            const monthlyPositive = useMemo(() => points.filter(p => p.monthKey === selectedMonth && p.value > 0).reduce((a,b)=>a+b.value,0), [points, selectedMonth]);
+            const monthlyNegative = useMemo(() => points.filter(p => p.monthKey === selectedMonth && p.value < 0).reduce((a,b)=>a+b.value,0), [points, selectedMonth]);
+            const totalInteractions = useMemo(() => points.filter(p => p.monthKey === selectedMonth).length, [points, selectedMonth]);
+
+            const currentStreak = useMemo(() => {
+                const today = new Date();
+                let streak = 0;
+                for (let i = 0; i < 30; i++) {
+                    const checkDate = new Date(today);
+                    checkDate.setDate(checkDate.getDate() - i);
+                    const dateStr = checkDate.toLocaleDateString();
+                    const dayPoints = points.filter(p => p.timestamp && p.timestamp.toDate().toLocaleDateString() === dateStr);
+                    if (dayPoints.length > 0 && dayPoints.every(p => p.value >= 0)) {
+                        streak++;
+                    } else if (i > 0) {
+                        break;
+                    }
+                }
+                return streak;
+            }, [points]);
 
             if (status !== 'ready') {
                 return (
-                    <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
-                        <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                        <h2 className="text-xl font-bold">Connecting TeamPulse Cloud...</h2>
+                    <div className="h-screen flex flex-col items-center justify-center text-white">
+                        <div className="animate-float mb-6">
+                            <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center shadow-2xl">
+                                <Icon name="zap" size={40} className="text-purple-600" />
+                            </div>
+                        </div>
+                        <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <h2 className="text-2xl font-black font-display">Loading TeamPulse...</h2>
+                        <p className="text-purple-200 mt-2">Syncing your team data</p>
                     </div>
                 );
             }
 
             return (
-                <div className="flex h-screen overflow-hidden bg-gray-50">
-                    <aside className="w-64 bg-white border-r flex flex-col p-6 shrink-0 shadow-sm">
-                        <div className="flex items-center gap-3 mb-10"><div className="w-9 h-9 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg"><Icon name="award" /></div><span className="text-lg font-bold tracking-tight">TeamPulse</span></div>
-                        <nav className="flex-1 space-y-1">
+                <div className="flex h-screen overflow-hidden">
+                    {showAchievement && (
+                        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+                            <div className="glass border-4 border-white rounded-3xl p-8 shadow-2xl animate-scale-in max-w-md">
+                                <div className="text-center">
+                                    <div className={`w-24 h-24 rounded-full bg-gradient-to-br ${getAchievementColor(showAchievement.color)} flex items-center justify-center mb-4 mx-auto animate-pulse-once shadow-2xl`}>
+                                        <Icon name={showAchievement.icon} size={48} className="text-white" />
+                                    </div>
+                                    <h2 className="text-2xl font-black font-display mb-2 gradient-text">Achievement Unlocked!</h2>
+                                    <h3 className="text-xl font-bold text-gray-800 mb-2">{showAchievement.name}</h3>
+                                    <p className="text-gray-600">{showAchievement.desc}</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <aside className="w-72 glass border-r border-white/20 flex flex-col p-6 shrink-0 shadow-2xl">
+                        <div className="flex items-center gap-3 mb-8">
+                            <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center text-white shadow-xl animate-glow">
+                                <Icon name="zap" size={28} />
+                            </div>
+                            <div>
+                                <span className="text-xl font-black font-display gradient-text">TeamPulse</span>
+                                <p className="text-[10px] text-purple-600 font-bold uppercase tracking-wider">Gamified Edition</p>
+                            </div>
+                        </div>
+
+                        {currentStreak > 0 && (
+                            <div className="mb-6 bg-gradient-to-r from-orange-400 to-red-500 rounded-2xl p-4 text-white shadow-lg">
+                                <div className="flex items-center gap-3">
+                                    <Icon name="flame" size={32} className="animate-pulse-once" />
+                                    <div>
+                                        <p className="text-xs font-bold opacity-90">Current Streak</p>
+                                        <p className="text-2xl font-black font-display">{currentStreak} Days</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <nav className="flex-1 space-y-2">
                             {[
-                                {id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard'},
-                                {id: 'assign', label: 'Assign Points', icon: 'plus-circle'},
-                                {id: 'team', label: 'Employees', icon: 'users'},
-                                {id: 'settings', label: 'Reason Library', icon: 'settings'},
-                                {id: 'changelog', label: 'Activity Log', icon: 'history'}
+                                {id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard', gradient: 'from-blue-500 to-purple-600'},
+                                {id: 'leaderboard', label: 'Leaderboard', icon: 'trophy', gradient: 'from-yellow-400 to-orange-500'},
+                                {id: 'assign', label: 'Assign Points', icon: 'plus-circle', gradient: 'from-green-400 to-emerald-600'},
+                                {id: 'team', label: 'Team Members', icon: 'users', gradient: 'from-pink-500 to-rose-600'},
+                                {id: 'achievements', label: 'Achievements', icon: 'award', gradient: 'from-purple-500 to-indigo-600'},
+                                {id: 'settings', label: 'Point Library', icon: 'settings', gradient: 'from-gray-400 to-gray-600'},
+                                {id: 'changelog', label: 'Activity Log', icon: 'history', gradient: 'from-cyan-400 to-blue-500'}
                             ].map(item => (
-                                <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-3 p-2.5 px-4 rounded-xl transition-all ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-gray-500 hover:bg-gray-100'}`}>
-                                    <Icon name={item.icon} size={18} /><span className="font-semibold text-[13px]">{item.label}</span>
+                                <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-3 p-3 px-4 rounded-xl transition-all font-bold ${activeTab === item.id ? `bg-gradient-to-r ${item.gradient} text-white shadow-xl scale-105` : 'text-gray-600 hover:bg-white/50'}`}>
+                                    <Icon name={item.icon} size={20} /><span className="text-sm">{item.label}</span>
                                 </button>
                             ))}
                         </nav>
+
+                        <div className="mt-6 pt-6 border-t border-gray-200">
+                            <div className="text-xs text-gray-500 flex items-center gap-2">
+                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                <span className="font-semibold">Live Sync Active</span>
+                            </div>
+                        </div>
                     </aside>
 
                     <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                         <header className="flex justify-between items-center mb-8">
-                            <h1 className="text-xl font-extrabold capitalize">{activeTab.replace('changelog', 'Activity Log')}</h1>
-                            <div className="bg-white p-1.5 px-3 rounded-xl border flex items-center gap-2 shadow-sm text-sm font-bold">
-                                <Icon name="calendar" size={14} className="text-indigo-500" />
-                                <select className="bg-transparent outline-none cursor-pointer" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+                            <div>
+                                <h1 className="text-3xl font-black font-display gradient-text capitalize">{activeTab === 'changelog' ? 'Activity Log' : activeTab}</h1>
+                                <p className="text-sm text-purple-600 font-semibold mt-1">Track, celebrate, and grow together 🚀</p>
+                            </div>
+                            <div className="glass p-2 px-4 rounded-xl border border-white flex items-center gap-3 shadow-lg">
+                                <Icon name="calendar" size={18} className="text-purple-600" />
+                                <select className="bg-transparent outline-none cursor-pointer font-bold text-gray-700" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
                                     {[0,1,2,3,4,5].map(i => {
                                         const d = new Date(); d.setMonth(d.getMonth()-i);
                                         const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -293,122 +509,332 @@
                             </div>
                         </header>
 
-                        <div className="max-w-6xl mx-auto animate-fade-in">
-                            {activeTab === 'dashboard' && (
-                                <div className="space-y-6">
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                        <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Positives</p><h3 className="text-2xl font-black text-green-600">+{points.filter(p => p.monthKey === selectedMonth && p.value > 0).reduce((a,b)=>a+b.value,0)}</h3></div>
-                                        <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Negatives</p><h3 className="text-2xl font-black text-red-600">{points.filter(p => p.monthKey === selectedMonth && p.value < 0).reduce((a,b)=>a+b.value,0)}</h3></div>
-                                        <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Total Interactions</p><h3 className="text-2xl font-black text-indigo-600">{points.filter(p => p.monthKey === selectedMonth).length}</h3></div>
+                        <div className="max-w-7xl mx-auto">
+                        {activeTab === 'dashboard' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                        <StatCard icon="trending-up" label="Positive Points" value={`+${monthlyPositive}`} color="from-green-400 to-emerald-600" />
+                                        <StatCard icon="trending-down" label="Negative Points" value={monthlyNegative} color="from-red-400 to-rose-600" />
+                                        <StatCard icon="activity" label="Total Interactions" value={totalInteractions} color="from-blue-400 to-indigo-600" />
+                                        <StatCard icon="users" label="Team Size" value={employees.length} color="from-purple-400 to-pink-600" />
                                     </div>
-                                    <div className="bg-white p-8 rounded-2xl border shadow-sm">
-                                        <h2 className="font-bold mb-6 text-sm uppercase tracking-widest text-gray-400 flex items-center gap-2"><Icon name="bar-chart"/> Monthly Team Overview</h2>
-                                        {leaderboard.length > 0 ? <LeaderboardChart data={leaderboard} /> : <div className="p-20 text-center text-gray-400">No data for this month.</div>}
+
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        <div className="lg:col-span-2 glass p-8 rounded-3xl border border-white shadow-xl">
+                                            <h2 className="font-black font-display text-lg mb-6 text-gray-800 flex items-center gap-2">
+                                                <Icon name="bar-chart" className="text-purple-600"/> Team Performance Overview
+                                            </h2>
+                                            {leaderboard.length > 0 ? <LeaderboardChart data={leaderboard} /> : <div className="p-20 text-center text-gray-400">No data for this month.</div>}
+                                        </div>
+
+                                        <div className="glass p-6 rounded-3xl border border-white shadow-xl">
+                                            <h3 className="font-black font-display text-sm mb-4 text-gray-800 flex items-center gap-2">
+                                                <Icon name="trophy" className="text-yellow-500"/> Quick Stats
+                                            </h3>
+                                            <div className="space-y-4">
+                                                <div className="bg-gradient-to-r from-yellow-50 to-orange-50 p-4 rounded-xl border border-yellow-200">
+                                                    <div className="flex items-center gap-3">
+                                                        <Icon name="crown" size={24} className="trophy-gold" />
+                                                        <div>
+                                                            <p className="text-xs text-gray-500 font-semibold">Top Performer</p>
+                                                            <p className="font-black text-gray-800">{leaderboard[0]?.name || 'N/A'}</p>
+                                                            <p className="text-xs font-bold text-yellow-600">{leaderboard[0]?.score || 0} pts</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-xl border border-purple-200">
+                                                    <p className="text-xs text-gray-500 font-semibold mb-1">Team Morale</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex-1 bg-gray-200 rounded-full h-2">
+                                                            <div className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full" style={{ width: `${Math.min(100, (monthlyPositive / (monthlyPositive + Math.abs(monthlyNegative) || 1)) * 100)}%` }}></div>
+                                                        </div>
+                                                        <span className="text-xs font-black text-purple-600">{Math.round((monthlyPositive / (monthlyPositive + Math.abs(monthlyNegative) || 1)) * 100)}%</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'leaderboard' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="glass p-8 rounded-3xl border border-white shadow-xl">
+                                        <h2 className="font-black font-display text-2xl mb-8 text-gray-800 flex items-center gap-3">
+                                            <Icon name="trophy" className="text-yellow-500" size={32}/> Monthly Leaderboard
+                                        </h2>
+                                        {leaderboard.length > 0 ? (
+                                            <div className="space-y-3">
+                                                {leaderboard.map((person, idx) => (
+                                                    <div key={idx} className={`flex items-center gap-4 p-5 rounded-2xl transition-all ${idx === 0 ? 'bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300 shadow-lg' : idx === 1 ? 'bg-gradient-to-r from-gray-50 to-slate-50 border-2 border-gray-300' : idx === 2 ? 'bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-300' : 'bg-white border border-gray-200'}`}>
+                                                        <div className="text-center w-12">
+                                                            {idx === 0 && <Icon name="crown" size={32} className="trophy-gold" />}
+                                                            {idx === 1 && <Icon name="medal" size={28} className="trophy-silver" />}
+                                                            {idx === 2 && <Icon name="award" size={26} className="trophy-bronze" />}
+                                                            {idx > 2 && <span className="text-2xl font-black text-gray-400">#{idx + 1}</span>}
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <p className="font-black text-lg text-gray-800">{person.name}</p>
+                                                            <div className="mt-1 bg-gray-200 rounded-full h-2 w-full max-w-xs">
+                                                                <div className={`h-2 rounded-full transition-all ${person.score >= 0 ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'bg-gradient-to-r from-red-500 to-rose-600'}`} style={{ width: `${Math.min(100, Math.abs(person.score) / (Math.max(...leaderboard.map(p => Math.abs(p.score))) || 1) * 100)}%` }}></div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className={`text-3xl font-black font-display ${person.score >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                {person.score > 0 ? '+' : ''}{person.score}
+                                                            </p>
+                                                            <p className="text-xs text-gray-500 font-semibold">points</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="p-20 text-center text-gray-400">
+                                                <Icon name="trophy" size={64} className="mx-auto mb-4 opacity-20" />
+                                                <p className="text-lg font-semibold">No rankings yet this month</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'achievements' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="glass p-8 rounded-3xl border border-white shadow-xl">
+                                        <h2 className="font-black font-display text-2xl mb-2 text-gray-800 flex items-center gap-3">
+                                            <Icon name="award" className="text-purple-600" size={32}/> Achievement Gallery
+                                        </h2>
+                                        <p className="text-gray-600 mb-8">Unlock achievements by hitting milestones and building your team</p>
+                                        
+                                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                                            {ACHIEVEMENTS.map(ach => {
+                                                const unlocked = achievements.find(a => a.id === ach.id);
+                                                let progress = 0;
+                                                
+                                                if (ach.id === 'first_point') progress = points.length;
+                                                if (ach.id === 'ten_points') progress = points.length;
+                                                if (ach.id === 'fifty_points') progress = points.length;
+                                                if (ach.id === 'hundred_points') progress = points.length;
+                                                if (ach.id === 'five_employees') progress = employees.length;
+                                                
+                                                return <AchievementBadge key={ach.id} achievement={ach} unlocked={!!unlocked} progress={progress} />;
+                                            })}
+                                        </div>
+
+                                        <div className="mt-8 p-6 bg-gradient-to-r from-purple-100 to-pink-100 rounded-2xl border border-purple-200">
+                                            <div className="flex items-center gap-4">
+                                                <div className="text-5xl">🏆</div>
+                                                <div className="flex-1">
+                                                    <p className="font-black text-gray-800 text-lg">Achievement Progress</p>
+                                                    <p className="text-sm text-gray-600 mt-1">{achievements.length} of {ACHIEVEMENTS.length} unlocked</p>
+                                                    <div className="mt-2 bg-white rounded-full h-3 overflow-hidden">
+                                                        <div className="bg-gradient-to-r from-purple-500 to-pink-500 h-3 transition-all" style={{ width: `${(achievements.length / ACHIEVEMENTS.length) * 100}%` }}></div>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-4xl font-black font-display gradient-text">{Math.round((achievements.length / ACHIEVEMENTS.length) * 100)}%</p>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             )}
 
                             {activeTab === 'assign' && (
-                                <div className="max-w-xl mx-auto bg-white p-10 rounded-3xl border shadow-sm">
-                                    <h2 className="text-lg font-bold mb-6 text-gray-800">New Interaction Record</h2>
-                                    <form onSubmit={handleAssignPoint} className="space-y-4">
-                                        <select className="w-full p-3 bg-gray-50 border rounded-xl" value={pointForm.empId} onChange={e => setPointForm({...pointForm, empId: e.target.value})} required><option value="">Select Employee...</option>{employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
-                                        <select className="w-full p-3 bg-gray-50 border rounded-xl" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})} required><option value="">Select Interaction Preset...</option>{reasons.map(r => <option key={r.id} value={r.id}>{r.text} ({r.value})</option>)}</select>
-                                        <input className="w-full p-3 bg-gray-50 border rounded-xl" placeholder="Administrative Witness (Your Name)" value={pointForm.admin} onChange={e => setPointForm({...pointForm, admin: e.target.value})} required />
-                                        <textarea className="w-full p-3 bg-gray-50 border rounded-xl" placeholder="Detailed notes regarding this event..." rows="3" value={pointForm.notes} onChange={e => setPointForm({...pointForm, notes: e.target.value})} />
-                                        <button className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-colors">Submit Record</button>
+                                <div className="max-w-2xl mx-auto glass p-10 rounded-3xl border border-white shadow-xl animate-fade-in">
+                                    <div className="text-center mb-8">
+                                        <div className="w-16 h-16 bg-gradient-to-br from-green-400 to-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                                            <Icon name="plus-circle" size={32} className="text-white" />
+                                        </div>
+                                        <h2 className="text-2xl font-black font-display gradient-text">Award New Points</h2>
+                                        <p className="text-gray-600 mt-2">Recognize achievement or provide feedback</p>
+                                    </div>
+                                    <form onSubmit={handleAssignPoint} className="space-y-5">
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Select Team Member</label>
+                                            <select className="w-full p-4 bg-white border-2 border-gray-200 rounded-xl font-semibold text-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all" value={pointForm.empId} onChange={e => setPointForm({...pointForm, empId: e.target.value})} required>
+                                                <option value="">Choose employee...</option>
+                                                {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Interaction Type</label>
+                                            <select className="w-full p-4 bg-white border-2 border-gray-200 rounded-xl font-semibold text-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})} required>
+                                                <option value="">Select preset...</option>
+                                                {reasons.map(r => <option key={r.id} value={r.id}>{r.text} ({r.value > 0 ? '+' : ''}{r.value} pts)</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Your Name</label>
+                                            <input className="w-full p-4 bg-white border-2 border-gray-200 rounded-xl font-semibold text-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all" placeholder="Admin name..." value={pointForm.admin} onChange={e => setPointForm({...pointForm, admin: e.target.value})} required />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Additional Notes (Optional)</label>
+                                            <textarea className="w-full p-4 bg-white border-2 border-gray-200 rounded-xl font-semibold text-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all resize-none" placeholder="Add context about this interaction..." rows="4" value={pointForm.notes} onChange={e => setPointForm({...pointForm, notes: e.target.value})} />
+                                        </div>
+                                        <button className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-black py-5 rounded-xl shadow-xl hover:shadow-2xl hover:scale-105 transition-all text-lg">
+                                            🎉 Submit & Celebrate
+                                        </button>
                                     </form>
                                 </div>
                             )}
 
                             {activeTab === 'team' && (
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                    <div className="col-span-1 space-y-4">
-                                        <form onSubmit={(e) => { e.preventDefault(); if(empForm) { firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('employees').add({name: empForm.trim(), createdAt: firebase.firestore.FieldValue.serverTimestamp()}); setEmpForm(""); } }} className="flex gap-2"><input className="flex-1 border p-3 rounded-xl bg-white" placeholder="Add Employee Name..." value={empForm} onChange={e => setEmpForm(e.target.value)} required/><button className="bg-indigo-600 text-white px-4 rounded-xl shadow-md hover:bg-indigo-700 transition-colors"><Icon name="plus" /></button></form>
-                                        <div className="bg-white rounded-xl border overflow-hidden divide-y shadow-sm">
-                                            {employees.length === 0 ? <div className="p-8 text-center text-gray-400 italic">No team members.</div> :
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in">
+                                    <div className="col-span-1 space-y-5">
+                                        <form onSubmit={(e) => { e.preventDefault(); if(empForm) { firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('employees').add({name: empForm.trim(), createdAt: firebase.firestore.FieldValue.serverTimestamp()}); setEmpForm(""); confettiCelebration(); } }} className="flex gap-3">
+                                            <input className="flex-1 border-2 border-gray-200 p-4 rounded-xl glass font-semibold focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none" placeholder="Add team member..." value={empForm} onChange={e => setEmpForm(e.target.value)} required/>
+                                            <button className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all">
+                                                <Icon name="user-plus" size={20} />
+                                            </button>
+                                        </form>
+                                        <div className="glass rounded-2xl border border-white overflow-hidden divide-y divide-gray-100 shadow-xl">
+                                            {employees.length === 0 ? <div className="p-12 text-center text-gray-400 italic">No team members yet</div> :
                                             employees.map(e => (
-                                                <button key={e.id} onClick={() => setSelectedEmployeeId(e.id)} className={`w-full text-left p-4 transition-all hover:bg-gray-50 ${selectedEmployeeId === e.id ? 'bg-indigo-50 border-r-4 border-indigo-600 font-bold text-indigo-700' : 'text-gray-600'}`}>{e.name}</button>
+                                                <button key={e.id} onClick={() => setSelectedEmployeeId(e.id)} className={`w-full text-left p-5 transition-all hover:bg-purple-50 flex items-center gap-3 ${selectedEmployeeId === e.id ? 'bg-gradient-to-r from-purple-100 to-pink-100 border-r-4 border-purple-600' : ''}`}>
+                                                    <div className={`w-10 h-10 rounded-full bg-gradient-to-br flex items-center justify-center text-white font-black ${selectedEmployeeId === e.id ? 'from-purple-500 to-pink-500 shadow-lg' : 'from-gray-400 to-gray-500'}`}>
+                                                        {e.name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <span className={`font-bold ${selectedEmployeeId === e.id ? 'text-purple-700' : 'text-gray-700'}`}>{e.name}</span>
+                                                </button>
                                             ))}
                                         </div>
                                     </div>
                                     <div className="col-span-2">
                                         {currentEmployee ? (
-                                            <div className="space-y-6 animate-fade-in" key={currentEmployee.id}>
-                                                <div className="bg-white p-8 rounded-2xl border shadow-sm">
-                                                    <div className="flex justify-between items-center mb-6 border-b pb-4">
-                                                        <div>
-                                                            <h2 className="text-2xl font-black text-gray-800 tracking-tight">{currentEmployee.name}</h2>
-                                                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Live Employee Profile</p>
+                                            <div className="space-y-6" key={currentEmployee.id}>
+                                                <div className="glass p-8 rounded-3xl border border-white shadow-xl">
+                                                    <div className="flex justify-between items-start mb-6 pb-6 border-b-2 border-gray-100">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-black text-2xl shadow-lg">
+                                                                {currentEmployee.name.charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <div>
+                                                                <h2 className="text-3xl font-black font-display gradient-text">{currentEmployee.name}</h2>
+                                                                <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mt-1">Team Member Profile</p>
+                                                            </div>
                                                         </div>
-                                                        <button onClick={() => { if(confirm(`Delete ${currentEmployee.name}? This will not delete their history.`)) { firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('employees').doc(selectedEmployeeId).delete(); setSelectedEmployeeId(null); } }} className="text-red-300 hover:text-red-500 transition-colors p-2"><Icon name="trash-2" /></button>
+                                                        <button onClick={() => { if(confirm(`Remove ${currentEmployee.name} from the team? (History will be preserved)`)) { firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('employees').doc(selectedEmployeeId).delete(); setSelectedEmployeeId(null); } }} className="text-red-400 hover:text-red-600 transition-all p-2 hover:bg-red-50 rounded-lg">
+                                                            <Icon name="trash-2" size={20} />
+                                                        </button>
                                                     </div>
-                                                    {currentTrends.length > 0 ? <ProfileTrendChart data={currentTrends} /> : <div className="h-[180px] flex items-center justify-center text-gray-300 italic border rounded-xl bg-gray-50">No trend data available yet.</div>}
+                                                    
+                                                    <div className="mb-6">
+                                                        <h3 className="font-bold text-sm text-gray-600 uppercase tracking-wider mb-3">Performance Trend (Last 14 Days)</h3>
+                                                        {currentTrends.length > 0 ? <ProfileTrendChart data={currentTrends} /> : <div className="h-[200px] flex items-center justify-center text-gray-300 italic border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">No trend data available yet</div>}
+                                                    </div>
+
+                                                    <div className="grid grid-cols-3 gap-4">
+                                                        <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-xl border border-green-200">
+                                                            <p className="text-xs text-gray-600 font-semibold mb-1">Total Positive</p>
+                                                            <p className="text-2xl font-black text-green-600">+{currentHistory.filter(h => h.value > 0).reduce((a,b) => a + b.value, 0)}</p>
+                                                        </div>
+                                                        <div className="bg-gradient-to-br from-red-50 to-rose-50 p-4 rounded-xl border border-red-200">
+                                                            <p className="text-xs text-gray-600 font-semibold mb-1">Total Negative</p>
+                                                            <p className="text-2xl font-black text-red-600">{currentHistory.filter(h => h.value < 0).reduce((a,b) => a + b.value, 0)}</p>
+                                                        </div>
+                                                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-200">
+                                                            <p className="text-xs text-gray-600 font-semibold mb-1">Interactions</p>
+                                                            <p className="text-2xl font-black text-blue-600">{currentHistory.length}</p>
+                                                        </div>
+                                                    </div>
                                                 </div>
 
-                                                <div className="bg-indigo-600 p-6 rounded-2xl text-white shadow-lg shadow-indigo-100">
-                                                    <h3 className="font-bold mb-4 flex items-center gap-2"><Icon name="zap" /> Award Interaction Directly</h3>
+                                                <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-6 rounded-3xl text-white shadow-2xl">
+                                                    <h3 className="font-black text-lg mb-4 flex items-center gap-2">
+                                                        <Icon name="zap" size={24} /> Quick Award
+                                                    </h3>
                                                     <div className="flex gap-3">
-                                                        <select className="flex-1 p-2 bg-indigo-500/50 border border-indigo-400 rounded-lg text-white font-bold outline-none" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})}>
-                                                            <option value="" className="text-gray-900">Select Preset...</option>
+                                                        <select className="flex-1 p-3 bg-white/20 backdrop-blur border border-white/30 rounded-xl text-white font-bold outline-none" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})}>
+                                                            <option value="" className="text-gray-900">Select preset...</option>
                                                             {reasons.map(r => <option key={r.id} value={r.id} className="text-gray-900">{r.text} ({r.value} pts)</option>)}
                                                         </select>
-                                                        <input className="w-32 p-2 bg-indigo-500/50 border border-indigo-400 rounded-lg text-white placeholder-indigo-300 font-bold outline-none" placeholder="Admin" value={pointForm.admin} onChange={e => setPointForm({...pointForm, admin: e.target.value})} />
-                                                        <button onClick={(e) => handleAssignPoint(e, selectedEmployeeId)} className="bg-white text-indigo-600 px-6 py-2 rounded-lg font-black hover:bg-gray-100 transition-all active:scale-95 shadow-md">ADD</button>
+                                                        <input className="w-36 p-3 bg-white/20 backdrop-blur border border-white/30 rounded-xl text-white placeholder-white/70 font-bold outline-none" placeholder="Your name" value={pointForm.admin} onChange={e => setPointForm({...pointForm, admin: e.target.value})} />
+                                                        <button onClick={(e) => handleAssignPoint(e, selectedEmployeeId)} className="bg-white text-purple-600 px-8 py-3 rounded-xl font-black hover:bg-gray-100 transition-all hover:scale-105 shadow-lg">
+                                                            AWARD
+                                                        </button>
                                                     </div>
                                                 </div>
 
-                                                <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
-                                                    <div className="p-4 bg-gray-50 border-b flex justify-between items-center"><h3 className="font-bold text-gray-700">Detailed Interaction History</h3><span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">{currentHistory.length} Record(s)</span></div>
-                                                    <div className="divide-y max-h-[500px] overflow-y-auto custom-scrollbar">
-                                                        {currentHistory.length === 0 ? <div className="p-16 text-center text-gray-400 italic">No history recorded for this employee. Use the panel above to start tracking.</div> :
+                                                <div className="glass rounded-3xl border border-white shadow-xl overflow-hidden">
+                                                    <div className="p-5 bg-gradient-to-r from-gray-50 to-slate-50 border-b-2 border-gray-100 flex justify-between items-center">
+                                                        <h3 className="font-black text-gray-800">Interaction History</h3>
+                                                        <span className="text-xs font-bold uppercase text-gray-500 bg-white px-3 py-1 rounded-full">{currentHistory.length} Records</span>
+                                                    </div>
+                                                    <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto custom-scrollbar">
+                                                        {currentHistory.length === 0 ? 
+                                                            <div className="p-20 text-center text-gray-400 italic">
+                                                                <Icon name="inbox" size={48} className="mx-auto mb-4 opacity-20" />
+                                                                <p>No history yet. Use Quick Award to start tracking!</p>
+                                                            </div> :
                                                         currentHistory.map(h => (
-                                                            <div key={h.id} className="p-5 flex justify-between items-start group hover:bg-gray-50 transition-colors">
+                                                            <div key={h.id} className="p-5 flex justify-between items-start group hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50 transition-all">
                                                                 <div className="flex gap-4">
-                                                                    <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${h.value > 0 ? 'bg-green-500 shadow-sm shadow-green-200' : 'bg-red-500 shadow-sm shadow-red-200'}`} />
-                                                                    <div>
-                                                                        <div className="flex items-center gap-2">
-                                                                            <p className="font-bold text-gray-800 leading-tight">{h.reasonText}</p>
-                                                                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${h.value > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{h.value > 0 ? '+' : ''}{h.value}</span>
+                                                                    <div className={`mt-2 w-3 h-3 rounded-full shrink-0 ${h.value > 0 ? 'bg-green-500 shadow-lg shadow-green-200' : 'bg-red-500 shadow-lg shadow-red-200'}`} />
+                                                                    <div className="flex-1">
+                                                                        <div className="flex items-center gap-3 mb-1">
+                                                                            <p className="font-black text-gray-800">{h.reasonText}</p>
+                                                                            <span className={`text-xs font-black px-2 py-1 rounded-full ${h.value > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                                {h.value > 0 ? '+' : ''}{h.value}
+                                                                            </span>
                                                                         </div>
-                                                                        <p className="text-xs text-gray-500 mt-1 max-w-md">{h.notes || "No contextual notes recorded."}</p>
-                                                                        <div className="flex gap-3 text-[10px] font-bold text-gray-400 mt-2 uppercase tracking-tight">
-                                                                            <span className="flex items-center gap-1"><Icon name="user" size={10}/> {h.admin || "Admin"}</span>
+                                                                        <p className="text-sm text-gray-600 mb-2 max-w-2xl">{h.notes || "No additional notes"}</p>
+                                                                        <div className="flex gap-4 text-xs text-gray-500 font-semibold">
+                                                                            <span className="flex items-center gap-1"><Icon name="user" size={12}/> {h.admin || "Admin"}</span>
                                                                             <span>•</span>
-                                                                            <span className="flex items-center gap-1"><Icon name="clock" size={10}/> {h.timestamp?.toDate().toLocaleString() || 'Syncing...'}</span>
+                                                                            <span className="flex items-center gap-1"><Icon name="clock" size={12}/> {h.timestamp?.toDate().toLocaleString() || 'Syncing...'}</span>
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                                <button onClick={() => removePointEntry(h.id, h.employeeName, h.value)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all p-1 active:scale-90"><Icon name="x-circle" size={18} /></button>
+                                                                <button onClick={() => removePointEntry(h.id, h.employeeName, h.value)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all p-2 hover:bg-red-50 rounded-lg">
+                                                                    <Icon name="x-circle" size={20} />
+                                                                </button>
                                                             </div>
                                                         ))}
                                                     </div>
                                                 </div>
                                             </div>
                                         ) : (
-                                            <div className="h-full min-h-[400px] bg-white rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-300 italic"><Icon name="users" size={48} className="mb-4 opacity-5" />Select an employee from the list to view their detailed dossier</div>
+                                            <div className="h-full min-h-[500px] glass rounded-3xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400">
+                                                <Icon name="user-circle" size={80} className="mb-6 opacity-20" />
+                                                <p className="text-lg font-semibold">Select a team member to view their profile</p>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
                             )}
 
                             {activeTab === 'settings' && (
-                                <div className="max-w-2xl mx-auto space-y-6">
-                                    <div className="bg-white p-8 rounded-2xl border shadow-sm">
-                                        <h3 className="font-bold mb-4 text-gray-800">Define Library Reasons</h3>
-                                        <p className="text-xs text-gray-400 mb-6 italic">Presets allow for fast, standardized tracking across the team.</p>
-                                        <div className="flex gap-2">
-                                            <input className="flex-[3] border p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 ring-indigo-500/20" placeholder="Preset Title (e.g. Project Excellence)" value={reasonForm.text} onChange={e => setReasonForm({...reasonForm, text: e.target.value})}/>
-                                            <input className="flex-1 border p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 ring-indigo-500/20" type="number" placeholder="Value" value={reasonForm.value} onChange={e => setReasonForm({...reasonForm, value: e.target.value})}/>
-                                            <button onClick={async () => { if(!reasonForm.text) return; await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('reasons').add({...reasonForm, value: Number(reasonForm.value)}); setReasonForm({text:"", value:0}); }} className="bg-indigo-600 text-white px-6 rounded-xl font-bold hover:bg-indigo-700 shadow-md transition-all">Add</button>
+                                <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
+                                    <div className="glass p-8 rounded-3xl border border-white shadow-xl">
+                                        <h3 className="font-black font-display text-xl mb-2 gradient-text">Point Presets Library</h3>
+                                        <p className="text-sm text-gray-600 mb-6">Create reusable point templates for common interactions</p>
+                                        <div className="flex gap-3">
+                                            <input className="flex-[3] border-2 border-gray-200 p-4 rounded-xl glass font-semibold outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200" placeholder="Preset name (e.g. 'Great Teamwork')" value={reasonForm.text} onChange={e => setReasonForm({...reasonForm, text: e.target.value})}/>
+                                            <input className="flex-1 border-2 border-gray-200 p-4 rounded-xl glass font-semibold outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200" type="number" placeholder="Points" value={reasonForm.value} onChange={e => setReasonForm({...reasonForm, value: e.target.value})}/>
+                                            <button onClick={async () => { if(!reasonForm.text) return; await firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('reasons').add({...reasonForm, value: Number(reasonForm.value)}); setReasonForm({text:"", value:0}); }} className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-8 rounded-xl font-black hover:scale-105 shadow-lg transition-all">
+                                                Add
+                                            </button>
                                         </div>
                                     </div>
-                                    <div className="bg-white rounded-xl border divide-y shadow-sm overflow-hidden">
-                                        {reasons.length === 0 ? <div className="p-12 text-center text-gray-400 italic">Reason library is empty.</div> :
+                                    <div className="glass rounded-2xl border border-white divide-y divide-gray-100 shadow-xl overflow-hidden">
+                                        {reasons.length === 0 ? <div className="p-16 text-center text-gray-400 italic">Your preset library is empty</div> :
                                         reasons.map(r => (
-                                            <div key={r.id} className="p-4 px-6 flex justify-between items-center hover:bg-gray-50 group">
-                                                <span className="font-medium text-gray-700">{r.text} <b className={`ml-2 ${r.value >=0 ? 'text-green-500' : 'text-red-500'}`}>({r.value > 0 ? '+' : ''}{r.value})</b></span>
-                                                <button onClick={() => firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('reasons').doc(r.id).delete()} className="text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"><Icon name="trash" size={14}/></button>
+                                            <div key={r.id} className="p-5 px-6 flex justify-between items-center hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50 group transition-all">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${r.value >= 0 ? 'bg-green-100' : 'bg-red-100'}`}>
+                                                        <Icon name={r.value >= 0 ? 'thumbs-up' : 'thumbs-down'} size={20} className={r.value >= 0 ? 'text-green-600' : 'text-red-600'} />
+                                                    </div>
+                                                    <span className="font-bold text-gray-800">{r.text}</span>
+                                                </div>
+                                                <div className="flex items-center gap-4">
+                                                    <span className={`text-2xl font-black font-display ${r.value >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {r.value > 0 ? '+' : ''}{r.value}
+                                                    </span>
+                                                    <button onClick={() => firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data').collection('reasons').doc(r.id).delete()} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-2 hover:bg-red-50 rounded-lg">
+                                                        <Icon name="trash" size={18}/>
+                                                    </button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -416,17 +842,32 @@
                             )}
 
                             {activeTab === 'changelog' && (
-                                <div className="max-w-4xl mx-auto bg-white rounded-2xl border shadow-sm overflow-hidden">
-                                    <div className="p-4 bg-gray-50 border-b flex justify-between items-center"><h3 className="font-bold text-gray-700">Audit & Change History</h3><Icon name="history" className="text-gray-300" /></div>
-                                    <div className="divide-y max-h-[600px] overflow-y-auto custom-scrollbar">
-                                        {logs.length === 0 ? <div className="p-20 text-center text-gray-400 italic">No system activity logged.</div> :
+                                <div className="max-w-5xl mx-auto glass rounded-3xl border border-white shadow-xl overflow-hidden animate-fade-in">
+                                    <div className="p-6 bg-gradient-to-r from-gray-50 to-slate-50 border-b-2 border-gray-100 flex justify-between items-center">
+                                        <h3 className="font-black text-gray-800 text-lg">Activity Timeline</h3>
+                                        <Icon name="activity" className="text-purple-600" size={24} />
+                                    </div>
+                                    <div className="divide-y divide-gray-100 max-h-[700px] overflow-y-auto custom-scrollbar">
+                                        {logs.length === 0 ? 
+                                            <div className="p-24 text-center text-gray-400 italic">
+                                                <Icon name="inbox" size={64} className="mx-auto mb-4 opacity-20" />
+                                                <p className="text-lg">No activity logged yet</p>
+                                            </div> :
                                         logs.map(log => (
-                                            <div key={log.id} className="p-4 px-6 flex justify-between items-center hover:bg-gray-50 transition-colors">
-                                                <div className="flex items-center gap-4">
-                                                    <div className={`p-1.5 rounded-full ${log.action.includes('Assigned') ? 'bg-indigo-50 text-indigo-500' : 'bg-gray-100 text-gray-500'}`}><Icon name="activity" size={14}/></div>
-                                                    <div><p className="font-bold text-gray-800 leading-tight mb-0.5">{log.action}</p><p className="text-xs text-gray-500">{log.details}</p></div>
+                                            <div key={log.id} className="p-6 flex justify-between items-center hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50 transition-all group">
+                                                <div className="flex items-center gap-5">
+                                                    <div className={`p-3 rounded-xl ${log.action.includes('Assigned') ? 'bg-purple-100' : log.action.includes('Deleted') ? 'bg-red-100' : 'bg-gray-100'}`}>
+                                                        <Icon name="activity" size={20} className={log.action.includes('Assigned') ? 'text-purple-600' : log.action.includes('Deleted') ? 'text-red-600' : 'text-gray-600'}/>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-black text-gray-800 mb-1">{log.action}</p>
+                                                        <p className="text-sm text-gray-600">{log.details}</p>
+                                                    </div>
                                                 </div>
-                                                <div className="text-right text-[10px] text-gray-400 font-bold uppercase tracking-widest"><p className="text-gray-600">{log.admin}</p><p>{log.timestamp?.toDate().toLocaleTimeString() || 'Recording...'}</p></div>
+                                                <div className="text-right">
+                                                    <p className="text-sm font-bold text-gray-700">{log.admin}</p>
+                                                    <p className="text-xs text-gray-500 font-semibold">{log.timestamp?.toDate().toLocaleString() || 'Recording...'}</p>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
