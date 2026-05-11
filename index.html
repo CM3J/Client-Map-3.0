@@ -144,48 +144,70 @@
                 const ctx = canvasRef.current.getContext('2d');
                 if (chartInstance.current) chartInstance.current.destroy();
                 
-                const gradient = ctx.createLinearGradient(0, 0, 0, 180);
-                gradient.addColorStop(0, 'rgba(102, 126, 234, 0.3)');
-                gradient.addColorStop(1, 'rgba(102, 126, 234, 0.01)');
-                
                 chartInstance.current = new Chart(ctx, {
-                    type: 'line',
+                    type: 'bar',
                     data: {
                         labels: data.map(d => d.date),
-                        datasets: [{ 
-                            label: 'Points', 
-                            data: data.map(d => d.total), 
-                            borderColor: '#667eea',
-                            borderWidth: 3,
-                            tension: 0.4, 
-                            fill: true, 
-                            backgroundColor: gradient,
-                            pointBackgroundColor: '#667eea',
-                            pointRadius: 5,
-                            pointHoverRadius: 7,
-                            pointBorderWidth: 2,
-                            pointBorderColor: '#fff'
-                        }]
+                        datasets: [
+                            { 
+                                label: 'Positive Points', 
+                                data: data.map(d => d.positive), 
+                                backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                                borderColor: '#22c55e',
+                                borderWidth: 2,
+                                borderRadius: 6,
+                            },
+                            { 
+                                label: 'Negative Points', 
+                                data: data.map(d => d.negative), 
+                                backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                                borderColor: '#ef4444',
+                                borderWidth: 2,
+                                borderRadius: 6,
+                            }
+                        ]
                     },
                     options: { 
                         responsive: true, 
                         maintainAspectRatio: false,
                         plugins: { 
-                            legend: { display: false },
+                            legend: { 
+                                display: true,
+                                position: 'top',
+                                labels: {
+                                    font: { weight: 'bold', size: 12 },
+                                    padding: 15,
+                                    usePointStyle: true,
+                                }
+                            },
                             tooltip: {
                                 backgroundColor: 'rgba(0, 0, 0, 0.8)',
                                 padding: 12,
                                 cornerRadius: 8,
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        label += context.parsed.y;
+                                        return label;
+                                    }
+                                }
                             }
                         },
                         scales: { 
+                            x: {
+                                stacked: true,
+                                grid: { display: false },
+                                ticks: { font: { weight: '600' } }
+                            },
                             y: { 
+                                stacked: true,
                                 beginAtZero: true,
                                 grid: { color: 'rgba(0, 0, 0, 0.05)' },
-                            }, 
-                            x: { 
-                                grid: { display: false },
-                            } 
+                                ticks: { font: { weight: '600' } }
+                            }
                         },
                         animation: { duration: 1000, easing: 'easeOutQuart' }
                     }
@@ -194,7 +216,7 @@
                 return () => { if (chartInstance.current) chartInstance.current.destroy(); };
             }, [data]);
 
-            return <div className="h-[200px] w-full"><canvas ref={canvasRef}></canvas></div>;
+            return <div className="h-[220px] w-full"><canvas ref={canvasRef}></canvas></div>;
         });
 
         const LeaderboardChart = memo(({ data }) => {
@@ -257,6 +279,7 @@
                 <h3 className="text-3xl font-black font-display gradient-text">{value}</h3>
             </div>
         );
+
         const App = () => {
             const [user, setUser] = useState(null);
             const [status, setStatus] = useState('initializing'); 
@@ -386,9 +409,17 @@
                 currentHistory.forEach(p => {
                     if (!p.timestamp) return;
                     const d = p.timestamp.toDate().toLocaleDateString();
-                    map[d] = (map[d] || 0) + p.value;
+                    if (!map[d]) map[d] = { positive: 0, negative: 0 };
+                    if (p.value > 0) {
+                        map[d].positive += p.value;
+                    } else {
+                        map[d].negative += Math.abs(p.value);
+                    }
                 });
-                return Object.entries(map).map(([date, total]) => ({ date, total })).slice(-14).reverse();
+                return Object.entries(map)
+                    .map(([date, values]) => ({ date, positive: values.positive, negative: values.negative }))
+                    .slice(-14)
+                    .reverse();
             }, [currentHistory]);
 
             const monthlyPositive = useMemo(() => points.filter(p => p.monthKey === selectedMonth && p.value > 0).reduce((a,b)=>a+b.value,0), [points, selectedMonth]);
@@ -510,7 +541,7 @@
                         </header>
 
                         <div className="max-w-7xl mx-auto">
-                        {activeTab === 'dashboard' && (
+                            {activeTab === 'dashboard' && (
                                 <div className="space-y-6 animate-fade-in">
                                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                         <StatCard icon="trending-up" label="Positive Points" value={`+${monthlyPositive}`} color="from-green-400 to-emerald-600" />
@@ -657,12 +688,21 @@
                                                 {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                                             </select>
                                         </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Interaction Type</label>
-                                            <select className="w-full p-4 bg-white border-2 border-gray-200 rounded-xl font-semibold text-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})} required>
-                                                <option value="">Select preset...</option>
-                                                {reasons.map(r => <option key={r.id} value={r.id}>{r.text} ({r.value > 0 ? '+' : ''}{r.value} pts)</option>)}
-                                            </select>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-green-600 uppercase tracking-wider mb-2">Positive Presets</label>
+                                                <select className="w-full p-4 bg-green-50 border-2 border-green-200 rounded-xl font-semibold text-gray-700 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition-all" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})} required>
+                                                    <option value="">Select positive...</option>
+                                                    {reasons.filter(r => r.value > 0).map(r => <option key={r.id} value={r.id}>{r.text} (+{r.value} pts)</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-red-600 uppercase tracking-wider mb-2">Negative Presets</label>
+                                                <select className="w-full p-4 bg-red-50 border-2 border-red-200 rounded-xl font-semibold text-gray-700 focus:border-red-500 focus:ring-2 focus:ring-red-200 outline-none transition-all" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})} required>
+                                                    <option value="">Select negative...</option>
+                                                    {reasons.filter(r => r.value < 0).map(r => <option key={r.id} value={r.id}>{r.text} ({r.value} pts)</option>)}
+                                                </select>
+                                            </div>
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Your Name</label>
@@ -721,7 +761,7 @@
                                                     
                                                     <div className="mb-6">
                                                         <h3 className="font-bold text-sm text-gray-600 uppercase tracking-wider mb-3">Performance Trend (Last 14 Days)</h3>
-                                                        {currentTrends.length > 0 ? <ProfileTrendChart data={currentTrends} /> : <div className="h-[200px] flex items-center justify-center text-gray-300 italic border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">No trend data available yet</div>}
+                                                        {currentTrends.length > 0 ? <ProfileTrendChart data={currentTrends} /> : <div className="h-[220px] flex items-center justify-center text-gray-300 italic border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">No trend data available yet</div>}
                                                     </div>
 
                                                     <div className="grid grid-cols-3 gap-4">
@@ -745,10 +785,16 @@
                                                         <Icon name="zap" size={24} /> Quick Award
                                                     </h3>
                                                     <div className="flex gap-3">
-                                                        <select className="flex-1 p-3 bg-white/20 backdrop-blur border border-white/30 rounded-xl text-white font-bold outline-none" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})}>
-                                                            <option value="" className="text-gray-900">Select preset...</option>
-                                                            {reasons.map(r => <option key={r.id} value={r.id} className="text-gray-900">{r.text} ({r.value} pts)</option>)}
-                                                        </select>
+                                                        <div className="flex-1 grid grid-cols-2 gap-2">
+                                                            <select className="p-3 bg-white/20 backdrop-blur border border-white/30 rounded-xl text-white font-bold outline-none" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})}>
+                                                                <option value="" className="text-gray-900">Positive...</option>
+                                                                {reasons.filter(r => r.value > 0).map(r => <option key={r.id} value={r.id} className="text-gray-900">{r.text} (+{r.value})</option>)}
+                                                            </select>
+                                                            <select className="p-3 bg-white/20 backdrop-blur border border-white/30 rounded-xl text-white font-bold outline-none" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})}>
+                                                                <option value="" className="text-gray-900">Negative...</option>
+                                                                {reasons.filter(r => r.value < 0).map(r => <option key={r.id} value={r.id} className="text-gray-900">{r.text} ({r.value})</option>)}
+                                                            </select>
+                                                        </div>
                                                         <input className="w-36 p-3 bg-white/20 backdrop-blur border border-white/30 rounded-xl text-white placeholder-white/70 font-bold outline-none" placeholder="Your name" value={pointForm.admin} onChange={e => setPointForm({...pointForm, admin: e.target.value})} />
                                                         <button onClick={(e) => handleAssignPoint(e, selectedEmployeeId)} className="bg-white text-purple-600 px-8 py-3 rounded-xl font-black hover:bg-gray-100 transition-all hover:scale-105 shadow-lg">
                                                             AWARD
