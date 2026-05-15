@@ -395,12 +395,12 @@
                 await logAction("Points Deleted", `Removed ${val} pts from ${empName}`, "Admin");
             }, [logAction, appId]);
 
-            const leaderboard = useMemo(() => {
-                const map = {};
-                employees.forEach(e => map[e.id] = { name: e.name, score: 0 });
-                points.filter(p => p.monthKey === selectedMonth).forEach(p => { if (map[p.employeeId]) map[p.employeeId].score += p.value; });
-                return Object.values(map).sort((a,b) => b.score - a.score);
-            }, [employees, points, selectedMonth]);
+const leaderboard = useMemo(() => {
+    const map = {};
+    employees.forEach(e => map[e.id] = { name: e.name, score: 0 });
+    points.filter(p => p.monthKey === selectedMonth).forEach(p => { if (map[p.employeeId]) map[p.employeeId].score += p.value; });
+    return Object.values(map).filter(person => person.score !== 0).sort((a,b) => b.score - a.score);
+}, [employees, points, selectedMonth]);
 
             const currentEmployee = useMemo(() => employees.find(e => e.id === selectedEmployeeId), [employees, selectedEmployeeId]);
             const currentHistory = useMemo(() => points.filter(p => p.employeeId === selectedEmployeeId), [points, selectedEmployeeId]);
