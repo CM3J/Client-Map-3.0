@@ -680,7 +680,14 @@
                                         <h2 className="text-2xl font-black font-display gradient-text">Award New Points</h2>
                                         <p className="text-gray-600 mt-2">Recognize achievement or provide feedback</p>
                                     </div>
-                                    <form onSubmit={handleAssignPoint} className="space-y-5">
+                                    <form onSubmit={(e) => {
+                                        e.preventDefault();
+                                        if (!pointForm.reasonId) {
+                                            alert('Please select either a positive or negative preset');
+                                            return;
+                                        }
+                                        handleAssignPoint(e);
+                                    }} className="space-y-5">
                                         <div>
                                             <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Select Team Member</label>
                                             <select className="w-full p-4 bg-white border-2 border-gray-200 rounded-xl font-semibold text-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all" value={pointForm.empId} onChange={e => setPointForm({...pointForm, empId: e.target.value})} required>
@@ -691,14 +698,14 @@
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
                                                 <label className="block text-xs font-bold text-green-600 uppercase tracking-wider mb-2">Positive Presets</label>
-                                                <select className="w-full p-4 bg-green-50 border-2 border-green-200 rounded-xl font-semibold text-gray-700 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition-all" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})} required>
+                                                <select className="w-full p-4 bg-green-50 border-2 border-green-200 rounded-xl font-semibold text-gray-700 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition-all" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})}>
                                                     <option value="">Select positive...</option>
                                                     {reasons.filter(r => r.value > 0).map(r => <option key={r.id} value={r.id}>{r.text} (+{r.value} pts)</option>)}
                                                 </select>
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-bold text-red-600 uppercase tracking-wider mb-2">Negative Presets</label>
-                                                <select className="w-full p-4 bg-red-50 border-2 border-red-200 rounded-xl font-semibold text-gray-700 focus:border-red-500 focus:ring-2 focus:ring-red-200 outline-none transition-all" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})} required>
+                                                <select className="w-full p-4 bg-red-50 border-2 border-red-200 rounded-xl font-semibold text-gray-700 focus:border-red-500 focus:ring-2 focus:ring-red-200 outline-none transition-all" value={pointForm.reasonId} onChange={e => setPointForm({...pointForm, reasonId: e.target.value})}>
                                                     <option value="">Select negative...</option>
                                                     {reasons.filter(r => r.value < 0).map(r => <option key={r.id} value={r.id}>{r.text} ({r.value} pts)</option>)}
                                                 </select>
@@ -796,7 +803,13 @@
                                                             </select>
                                                         </div>
                                                         <input className="w-36 p-3 bg-white/20 backdrop-blur border border-white/30 rounded-xl text-white placeholder-white/70 font-bold outline-none" placeholder="Your name" value={pointForm.admin} onChange={e => setPointForm({...pointForm, admin: e.target.value})} />
-                                                        <button onClick={(e) => handleAssignPoint(e, selectedEmployeeId)} className="bg-white text-purple-600 px-8 py-3 rounded-xl font-black hover:bg-gray-100 transition-all hover:scale-105 shadow-lg">
+                                                        <button onClick={(e) => {
+                                                            if (!pointForm.reasonId) {
+                                                                alert('Please select either a positive or negative preset');
+                                                                return;
+                                                            }
+                                                            handleAssignPoint(e, selectedEmployeeId);
+                                                        }} className="bg-white text-purple-600 px-8 py-3 rounded-xl font-black hover:bg-gray-100 transition-all hover:scale-105 shadow-lg">
                                                             AWARD
                                                         </button>
                                                     </div>
