@@ -499,11 +499,11 @@ const Icon = memo(({ name, size = 18, className = "" }) => {
                 }
                 
                 return (
-                    <div style={{minHeight: '100vh', overflowY: 'auto', padding: '32px'}}>
+                   <div style={{height: '100vh', overflowY: 'auto', padding: '32px'}}>
                         <div style={{maxWidth: '1200px', margin: '0 auto'}}>
                             <div style={{textAlign: 'center', marginBottom: '32px'}}>
-                                <h1 style={{fontSize: '36px', fontWeight: '900', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: '8px'}}>TeamPulse Leaderboard</h1>
-                                <p style={{color: '#764ba2', fontWeight: '600'}}>Monthly Rankings</p>
+                                <h1 style={{fontSize: '36px', fontWeight: '900', color: 'white', textShadow: '0 2px 12px rgba(0,0,0,0.2)', marginBottom: '8px'}}>TeamPulse Leaderboard</h1>
+                                <p style={{color: 'rgba(255,255,255,0.9)', fontWeight: '600'}}>Monthly Rankings</p>
                                 <div style={{marginTop: '20px'}}>
                                     <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} style={{padding: '12px 24px', borderRadius: '12px', border: '2px solid white', background: 'rgba(255,255,255,0.95)', color: '#764ba2', fontWeight: '700', fontSize: '16px', cursor: 'pointer', outline: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.15)'}}>
                                         {Array.from({length: 12}).map((_, i) => {
