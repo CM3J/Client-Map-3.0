@@ -504,6 +504,15 @@ const Icon = memo(({ name, size = 18, className = "" }) => {
                             <div style={{textAlign: 'center', marginBottom: '32px'}}>
                                 <h1 style={{fontSize: '36px', fontWeight: '900', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: '8px'}}>TeamPulse Leaderboard</h1>
                                 <p style={{color: '#764ba2', fontWeight: '600'}}>Monthly Rankings</p>
+                                <div style={{marginTop: '20px'}}>
+                                    <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} style={{padding: '12px 24px', borderRadius: '12px', border: '2px solid white', background: 'rgba(255,255,255,0.95)', color: '#764ba2', fontWeight: '700', fontSize: '16px', cursor: 'pointer', outline: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.15)'}}>
+                                        {Array.from({length: 12}).map((_, i) => {
+                                            const d = new Date(); d.setMonth(d.getMonth() - i);
+                                            const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                                            return <option key={k} value={k}>{d.toLocaleString('default', {month: 'long', year: 'numeric'})}</option>;
+                                        })}
+                                    </select>
+                                </div>
                             </div>
 
                             <div style={{background: 'rgba(255,255,255,0.95)', padding: '32px', borderRadius: '24px', border: '1px solid white', boxShadow: '0 10px 40px rgba(0,0,0,0.1)'}}>
